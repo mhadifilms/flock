@@ -7,6 +7,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/denisbrodbeck/machineid v1.0.1
+	github.com/ebitengine/purego v0.11.2
 	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/google/go-cmp v0.7.0
 	github.com/kalafut/imohash v1.1.1

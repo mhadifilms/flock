@@ -129,7 +129,7 @@ func TestAgentQUICTransfer(t *testing.T) {
 			source := filepath.Join(root, "payload")
 			os.MkdirAll(filepath.Join(source, "nested", "empty"), 0700)
 			// More than one chunk per stream, non-aligned, not compressible by repeated text.
-			data := make([]byte, (2<<20)+37)
+			data := make([]byte, (9<<20)+37)
 			for i := range data {
 				data[i] = byte((i*73 + i/997) % 251)
 			}
@@ -292,7 +292,11 @@ func TestAgentRejectsChangedManifestAndChecksum(t *testing.T) {
 			defer cancel()
 			root := t.TempDir()
 			source := filepath.Join(root, "data.bin")
-			os.WriteFile(source, []byte("the sender's original bytes"), 0600)
+			data := []byte("the sender's original bytes")
+			if change == "checksum" {
+				data = bytes.Repeat(data, (9<<20)/len(data)+1)
+			}
+			os.WriteFile(source, data, 0600)
 			sender := startProcess(t, ctx, nil, "send", "--advertise", "127.0.0.1", source)
 			event := nextEvent(t, ctx, sender, "invitation")
 			var invite Invitation
@@ -322,6 +326,59 @@ func TestAgentRejectsChangedManifestAndChecksum(t *testing.T) {
 			for range sender.events {
 			}
 			<-sender.done
+		})
+	}
+}
+
+func TestAgentDeferredSourceHashAndLegacyInvitation(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprint("legacy=", legacy), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			root := t.TempDir()
+			name := filepath.Join(root, "large.bin")
+			data := make([]byte, (9<<20)+37)
+			for i := range data {
+				data[i] = byte(i*73 + i/997)
+			}
+			if err := os.WriteFile(name, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"send", "--advertise", "127.0.0.1"}
+			if legacy {
+				args = append(args, "--legacy-invitation")
+			}
+			sender := startProcess(t, ctx, nil, append(args, name)...)
+			event := nextEvent(t, ctx, sender, "invitation")
+			var invite Invitation
+			if err := json.Unmarshal(event["invite"], &invite); err != nil {
+				t.Fatal(err)
+			}
+			if legacy {
+				if invite.Version != 1 || len(invite.Files[0].SHA256) != 64 {
+					t.Fatal("legacy invitation lacks upfront digest")
+				}
+			} else if invite.Version != 2 || invite.Files[0].SHA256 != "" {
+				t.Fatal("large transfer did not defer source digest")
+			}
+			wire, _ := json.Marshal(invite)
+			receiver := startProcess(t, ctx, wire, "receive", "--out", filepath.Join(root, "received"))
+			completed := nextEvent(t, ctx, receiver, "completed")
+			var files []File
+			if err := json.Unmarshal(completed["files"], &files); err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(data)
+			if len(files) != 1 || files[0].SHA256 != hex.EncodeToString(digest[:]) {
+				t.Fatal("completed manifest omitted full authenticated source digest")
+			}
+			nextEvent(t, ctx, sender, "completed")
+			waitSuccess(t, ctx, receiver)
+			waitSuccess(t, ctx, sender)
+			got, err := os.ReadFile(filepath.Join(root, "received", "large.bin"))
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatal("deferred-hash transfer bytes differ")
+			}
 		})
 	}
 }

@@ -215,7 +215,7 @@ func (c *Client) pakeFeatures() []string {
 	}
 	features = append(features, tailcatFeature)
 	if _, ok := c.dataTransport().(*flockTransport); ok {
-		features = append(features, flockQUICFeature)
+		features = append(features, flockQUICFeature, flockSourceHashFeature)
 	}
 	if c.Options.IsSender && c.Options.Transport == TransportDERP {
 		features = append(features, tailcatRequiredFeature)
@@ -369,6 +369,9 @@ func (c *Client) installTailcatBundle(bundle *tailcatDataBundle, cleanup func(),
 	c.tailcat.bundleMu.Unlock()
 	c.tailcat.terminal.Store(false)
 	attempt.finishTailcatSetup()
+	if c.Options.IsSender {
+		c.startSourceManifest(attempt)
+	}
 	if !c.Options.IsSender {
 		for i := range bundle.connections {
 			go c.receiveData(i, c.connection(i+1), attempt)
@@ -535,6 +538,12 @@ func (c *Client) receiveTailcatStatus(deadline time.Time) (string, error) {
 		status, err := message.Decode(c.Key, payload)
 		if err != nil {
 			return "", tailcatProtocolError{err: fmt.Errorf("invalid encrypted Tailcat status: %w", err)}
+		}
+		if status.Type == flockSourceHashMessage {
+			if err := c.processSourceManifest(status); err != nil {
+				return "", err
+			}
+			continue
 		}
 		if status.Type == flockUDPPeer {
 			provider, ok := c.dataTransport().(*flockTransport)

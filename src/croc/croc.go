@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/denisbrodbeck/machineid"
-	ignore "github.com/sabhiram/go-gitignore"
 	log "github.com/mhadifilms/flock/src/logger"
+	ignore "github.com/sabhiram/go-gitignore"
 	"github.com/schollz/pake/v3"
 	"github.com/schollz/peerdiscovery"
 	"github.com/schollz/progressbar/v3"
@@ -94,10 +94,14 @@ func Debug(debug bool) {
 
 // Options specifies user specific options
 type Options struct {
-	Agent             bool                               `json:"-"`
-	OnProgress        func(int64)                        `json:"-"`
-	OnTransport       func(string)                       `json:"-"`
-	OnOffer           func([]FileInfo, []FileInfo) error `json:"-"`
+	Agent             bool                                  `json:"-"`
+	OnChunkWritten    func(FileInfo, int64, int) error      `json:"-"`
+	OnFileReceived    func(FileInfo) error                  `json:"-"`
+	OnProgress        func(int64)                           `json:"-"`
+	OnTransport       func(string)                          `json:"-"`
+	OnOffer           func([]FileInfo, []FileInfo) error    `json:"-"`
+	SourceManifest    func(context.Context) ([]byte, error) `json:"-"`
+	OnSourceManifest  func([]byte) error                    `json:"-"`
 	IsSender          bool
 	SharedSecret      string
 	RoomName          string
@@ -188,13 +192,23 @@ type SimpleMessage struct {
 	Curve   string
 }
 
-// Client holds the state of the croc transfer
+// cachedMachineID avoids launching ioreg for every file on macOS. The identity
+// is stable for the lifetime of this transfer client, including reconnects.
+func (c *Client) cachedMachineID() string {
+	c.machineIDOnce.Do(func() { c.machineID, _ = machineid.ID() })
+	return c.machineID
+}
+
+// Client holds the state of the croc transfer.
 type Client struct {
+	sourceManifestOnce              sync.Once
 	Options                         Options
 	Pake                            *pake.Pake
 	Key                             []byte
 	ExternalIP, ExternalIPConnected string
 	startup                         startupTiming
+	machineIDOnce                   sync.Once
+	machineID                       string
 
 	// steps involved in forming relationship
 	lifecycleMu               sync.RWMutex
@@ -1791,7 +1805,7 @@ func (c *Client) Send(filesInfo []FileInfo, emptyFoldersToTransfer []FileInfo, t
 		showReceiveCommandQrCode(webURL)
 	}
 	if c.Options.Ask {
-		machid, _ := machineid.ID()
+		machid := c.cachedMachineID()
 		fmt.Fprintf(os.Stderr, "\rYour machine ID is '%s'\n", machid)
 	}
 	// c.spinner.Suffix = " waiting for recipient..."
@@ -2522,7 +2536,7 @@ func (c *Client) processSenderInfo(senderInfo SenderInfo) (done bool, err error)
 		}
 		choicePrompt := termui.PromptChoices("(Y/n)", colorEnabled)
 		if c.Options.Ask || senderInfo.Ask {
-			machID, _ := machineid.ID()
+			machID := c.cachedMachineID()
 			fmt.Fprintf(output, "\rYour machine id is '%s'.\n%s %s (%s) from '%s'? %s ", machID, action, fname, utils.ByteCountDecimal(totalSize), senderInfo.MachineID, choicePrompt)
 		} else {
 			if c.TotalNumberFolders > 0 {
@@ -2635,6 +2649,9 @@ func (c *Client) processMessagePake(m message.Message, attempt *transferAttemptS
 	c.tailcat.peerCapable = supportsFeature(m.Features, tailcatFeature)
 	if _, ok := c.dataTransport().(*flockTransport); ok && !supportsFeature(m.Features, flockQUICFeature) {
 		return errors.New("peer does not support Flock QUIC")
+	}
+	if (c.Options.SourceManifest != nil || c.Options.OnSourceManifest != nil) && !supportsFeature(m.Features, flockSourceHashFeature) {
+		return errors.New("peer does not support deferred Flock SHA-256")
 	}
 	c.tailcat.peerRequired = supportsFeature(m.Features, tailcatRequiredFeature)
 	c.peerInlineMetadata = supportsFeature(m.Features, inlinePeerMetadataFeature)
@@ -2951,6 +2968,8 @@ func (c *Client) processMessage(payload []byte, attempt *transferAttemptState) (
 		}
 	case message.TypeTailcatOffer:
 		err = c.processTailcatOffer(m, attempt)
+	case flockSourceHashMessage:
+		err = c.processSourceManifest(m)
 	case message.TypeTailcatStatus:
 		err = c.processUnexpectedTailcatStatus(m)
 	case message.TypeTransportSelect:
@@ -3069,7 +3088,7 @@ func (c *Client) updateIfSenderChannelSecured() (err error) {
 		if err := c.finalizeHashNegotiation(); err != nil {
 			return err
 		}
-		machID, _ := machineid.ID()
+		machID := c.cachedMachineID()
 		nextReconnectRoom := ""
 		externalIP := ""
 		if c.peerInlineMetadata {
@@ -3204,7 +3223,7 @@ func (c *Client) recipientGetFileReady(finished bool) (err error) {
 	c.TotalChunksTransferred = 0
 	c.CurrentFileIsClosed = false
 	c.receiveMutex.Unlock()
-	machID, _ := machineid.ID()
+	machID := c.cachedMachineID()
 	externalIP := ""
 	if c.peerInlineMetadata {
 		externalIP = c.advertisedExternalIP()
@@ -3683,6 +3702,13 @@ func (c *Client) receiveData(i int, dataConn *comm.Comm, attempt *transferAttemp
 			return
 		}
 
+		if c.Options.OnChunkWritten != nil {
+			if err := c.Options.OnChunkWritten(c.FilesToTransfer[c.FilesToTransferCurrentNum], positionInt64, len(data)-8); err != nil {
+				attempt.report(err)
+				return
+			}
+		}
+
 		c.receiveMutex.Lock()
 		if c.CurrentFileIsClosed || c.CurrentFile != receiveFile {
 			c.receiveMutex.Unlock()
@@ -3704,6 +3730,12 @@ func (c *Client) receiveData(i int, dataConn *comm.Comm, attempt *transferAttemp
 				log.Debugf("error closing %s: %v", receiveFile.Name(), err)
 			} else {
 				log.Debugf("Successful closing %s", receiveFile.Name())
+			}
+			if c.Options.OnFileReceived != nil {
+				if err := c.Options.OnFileReceived(c.FilesToTransfer[c.FilesToTransferCurrentNum]); err != nil {
+					attempt.report(err)
+					return
+				}
 			}
 			if c.Options.Stdout || c.Options.SendingText {
 				pathToFile := path.Join(

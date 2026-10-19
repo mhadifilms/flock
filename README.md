@@ -5,7 +5,8 @@ automatic pairing invitations, deadlines, and verified receive results.
 
 **Early release.** Directly reachable IPv4 peers work on a LAN or an overlay
 such as Tailscale. Internet NAT discovery, UDP relay fallback, and geographic
-WAN qualification are future work. Performance comparisons are still pending.
+WAN qualification are future work. Performance depends on workload and route; see
+the [measured LAN results](bench/results/README.md).
 
 ## Install
 
@@ -64,8 +65,17 @@ flock receive --out ./received < invitation.json
 
 There is no human code to choose or type, no clipboard dependency, and no
 confirmation prompt. The invitation is a generated 256-bit bearer capability
-with an expiry, control address, relative paths, sizes, and SHA-256 hashes.
+with an expiry, control address, relative paths and sizes. For one large file,
+version 2 lets transfer begin while the full source SHA-256 is computed; that
+digest arrives over the authenticated encrypted control channel. The receiver
+cannot succeed without matching it against full destination readback. Other
+transfers use version 1 with SHA-256 hashes already in the invitation.
 It grants access to this transfer: treat it as a secret when handing it off.
+
+To include a large file's SHA-256 before pairing, or send to an older receiver,
+use `flock send --legacy-invitation --advertise IPV4 FILE`. The new receiver
+accepts both invitation versions. The final `completed` manifest includes every
+full SHA-256 in both modes.
 
 For example, an agent reading a sender subprocess can extract the invitation:
 
@@ -101,7 +111,10 @@ The recipient emits `completed` with `sha256_verified: true` **only after every
 received file has passed full SHA-256 and size verification**, and expected empty
 directories exist. A sender's `completed` reports transport completion with
 `sha256_verified: false`; consume the recipient's result for verified delivery.
-The sender does not yet receive a separate post-verification receipt.
+The sender does not yet receive a separate post-verification receipt. Large files
+can be read back and hashed in completed regions while later regions arrive;
+coverage, size, file identity and the full SHA-256 must all match before success.
+Small files retain post-transfer verification.
 
 Exit status is `0` for success, `1` for failure, `124` for timeout, and `130` for
 cancellation. `--timeout` defaults to `30m`, includes invitation input and
@@ -163,12 +176,20 @@ changed manifests, bad final checksums, expired/unsafe invitations, and blocked
 UDP without TCP data fallback. Session-authentication tests reject altered
 endpoint offers and wrong TLS session keys.
 
-The first native macOS-to-macOS LAN check transferred an incompressible 64 MiB
-file plus nested/empty entries in **2.598 seconds end to end (24.64 MiB/s)**,
-including startup and SHA-256 work. Both processes exited successfully; a separate
-remote `shasum -a 256` matched the source. This is a single functional measurement,
-not a comparative benchmark or a WAN performance result. Benchmarking and tuning remain
-necessary before making speed claims.
+The macOS performance branch batches ready QUIC datagrams and avoids looking up
+hardware identity for every file. Repeated tests between two Macs cover both
+transfer directions, a 1 GiB incompressible file, and a 1,026-file directory.
+Every received file passes an independent SHA-256 comparison. The directory is
+substantially faster than croc's normal transfer mode and its explicit ZIP mode
+in the earlier comparisons. With full source and destination hashing overlapped,
+the current candidate also closes the bulk regression: the repeated 20 GiB LAN
+comparison took 77.7 seconds versus 80.1 for quiet croc with eight TCP relay
+connections. This is a modest, mode-specific result.
+
+See [results, build fingerprints, and limits](bench/results/README.md) and the
+[reproducible two-host runner](bench/README.md). These changes are source-branch
+work and are **not included in the published v0.1.0 packages**. They do not
+establish WAN performance or a universal speedup from using UDP.
 
 ## License and provenance
 

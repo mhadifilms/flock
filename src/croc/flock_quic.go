@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/mhadifilms/flock/src/message"
 	"github.com/mhadifilms/flock/src/tailcattransport"
+	"github.com/quic-go/quic-go"
 )
 
 const flockQUICFeature = "flock-quic-v1"
@@ -163,7 +163,7 @@ func flockQUICConfig() *quic.Config {
 type flockListener struct {
 	listener  *quic.Listener
 	transport *quic.Transport
-	socket    *net.UDPConn
+	packets   net.PacketConn
 	peers     <-chan *net.UDPAddr
 	offer     string
 	streams   int
@@ -175,6 +175,18 @@ func (p *flockTransport) Listen(_ context.Context, key []byte, events tailcattra
 	if err != nil {
 		return nil, err
 	}
+	if address.IP.IsUnspecified() {
+		// Bind a local advertised interface to avoid redundant per-packet source
+		// metadata. Public NAT addresses must retain the caller's wildcard bind.
+		advertised := net.ParseIP(p.config.Advertise)
+		interfaces, _ := net.InterfaceAddrs()
+		for _, iface := range interfaces {
+			if network, ok := iface.(*net.IPNet); ok && network.IP.Equal(advertised) {
+				address.IP = advertised
+				break
+			}
+		}
+	}
 	socket, err := net.ListenUDP("udp4", address)
 	if err != nil {
 		return nil, err
@@ -184,11 +196,12 @@ func (p *flockTransport) Listen(_ context.Context, key []byte, events tailcattra
 		socket.Close()
 		return nil, err
 	}
-	transport := &quic.Transport{Conn: socket}
+	packets := flockPacketConn(socket)
+	transport := &quic.Transport{Conn: packets}
 	listener, err := transport.Listen(conf, flockQUICConfig())
 	if err != nil {
+		packets.Close()
 		transport.Close()
-		socket.Close()
 		return nil, err
 	}
 	port := socket.LocalAddr().(*net.UDPAddr).Port
@@ -198,13 +211,14 @@ func (p *flockTransport) Listen(_ context.Context, key []byte, events tailcattra
 	if events != nil {
 		events("quic_listening")
 	}
-	return &flockListener{listener, transport, socket, p.peers, base64.RawURLEncoding.EncodeToString(data), p.config.Streams, events}, nil
+	return &flockListener{listener, transport, packets, p.peers, base64.RawURLEncoding.EncodeToString(data), p.config.Streams, events}, nil
 }
 func (l *flockListener) Offer() string { return l.offer }
 func (l *flockListener) Close() error {
 	l.listener.Close()
+	err := l.packets.Close()
 	l.transport.Close()
-	return l.socket.Close()
+	return err
 }
 func (l *flockListener) Accept(ctx context.Context) (*tailcatDataBundle, error) {
 	// The authenticated control channel exchanges the recipient's chosen UDP
@@ -215,13 +229,18 @@ func (l *flockListener) Accept(ctx context.Context) (*tailcatDataBundle, error) 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+	if paired, ok := l.packets.(interface{ Pair(*net.UDPAddr) error }); ok {
+		if err := paired.Pair(peer); err != nil {
+			return nil, err
+		}
+	}
 	probeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		timer := time.NewTicker(100 * time.Millisecond)
 		defer timer.Stop()
 		for {
-			l.socket.WriteToUDP([]byte{0}, peer)
+			l.packets.WriteTo([]byte{0}, peer)
 			select {
 			case <-timer.C:
 			case <-probeCtx.Done():
@@ -266,8 +285,15 @@ func (p *flockTransport) Dial(ctx context.Context, value string, key []byte, eve
 	if err != nil {
 		return nil, err
 	}
-	transport := &quic.Transport{Conn: socket}
-	cleanup := func() { transport.Close(); socket.Close() }
+	packets := flockPacketConn(socket)
+	transport := &quic.Transport{Conn: packets}
+	cleanup := func() { packets.Close(); transport.Close() }
+	if paired, ok := packets.(interface{ Pair(*net.UDPAddr) error }); ok {
+		if err := paired.Pair(address); err != nil {
+			cleanup()
+			return nil, err
+		}
+	}
 	if p.notify == nil {
 		cleanup()
 		return nil, errors.New("missing authenticated UDP pairing channel")
@@ -276,7 +302,7 @@ func (p *flockTransport) Dial(ctx context.Context, value string, key []byte, eve
 		cleanup()
 		return nil, err
 	}
-	socket.WriteToUDP([]byte{0}, address)
+	packets.WriteTo([]byte{0}, address)
 	conf, err := flockTLS(key, false)
 	if err != nil {
 		cleanup()

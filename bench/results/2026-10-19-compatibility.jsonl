@@ -1,0 +1,4 @@
+{"variant": "new-old", "fixture": "startup", "round": 0, "bytes": 65536, "files": 1, "command_seconds": 0.683024, "verified_seconds": 0.971805, "prepare_seconds": 0.341555, "independent_sha256": true, "transport": "quic/udp"}
+{"variant": "old-new", "fixture": "startup", "round": 0, "bytes": 65536, "files": 1, "command_seconds": 0.763216, "verified_seconds": 1.025068, "prepare_seconds": 0.034147, "independent_sha256": true, "transport": "quic/udp"}
+{"variant": "new-old", "fixture": "large", "round": 0, "bytes": 67108864, "files": 1, "command_seconds": 0.637653, "verified_seconds": 0.924636, "prepare_seconds": 0.038542, "independent_sha256": true, "transport": "quic/udp"}
+{"variant": "old-new", "fixture": "large", "round": 0, "bytes": 67108864, "files": 1, "command_seconds": 1.675684, "verified_seconds": 1.960735, "prepare_seconds": 0.037529, "independent_sha256": true, "transport": "quic/udp"}
