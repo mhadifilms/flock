@@ -1,11 +1,69 @@
 # macOS LAN qualification, 2026-10-19
 
-These are measurements of the specified modes on this pair of machines, not a
-universal UDP-versus-TCP claim. The source branch is faster on the many-file
-workload; croc remains faster on the bulk file. Published v0.1.0 packages do not
-contain these changes.
+These measurements qualify specified modes on one pair of machines. The latest
+candidate overlaps full source and destination SHA-256 with transfer and closes
+the earlier bulk regression in the repeated 20 GiB comparison below. Earlier
+candidate results remain for context. These are not universal UDP-versus-TCP or
+WAN claims. Published v0.1.0 packages do not contain these changes.
 
-## Builds and method
+## Current candidate: both full hashes overlap transfer
+
+Source: `b3cb13403e29e3d91719f37a80f517d14578e390`, Go 1.27.0,
+`CGO_ENABLED=0`, tags `netgo,osusergo,croc_no_tailcat`. Both endpoints used and now
+have installed the identical ARM64 binary as `~/.local/bin/flock-dev`, SHA-256
+`2933e7bf051a3f28fc7f622e949cac1b06d0569251b60162d46a63ff12c86002`.
+
+For one file of at least 8 MiB, invitation version 2 declares paths and sizes
+immediately. Full source SHA-256 runs during transfer and arrives over the
+PAKE-authenticated encrypted control channel. Destination readback also overlaps
+transfer. Completion requires that authenticated digest, complete chunk
+coverage, full destination SHA-256, size and file identity checks. Missing,
+incorrect, repeated or inventory-changing manifests fail. Source changes and
+cancellation fail. The control feature is negotiated before data setup.
+
+Small/many-file transfers retain version 1 and their upfront hashes. A large-file
+sender can select `--legacy-invitation` to commit the digest before pairing or
+serve an older recipient; the new receiver supports both versions. The final
+completed manifest always contains the full SHA-256. Chunk encryption and QUIC
+file-data requirements remain intact.
+
+Three alternating A → B trials per tool transferred a full random
+21,474,836,480-byte file (20 GiB / 21.47 GB). The source was temporary RAM-backed
+APFS because the internal disk lacked space; the recipient used its internal
+SSD. Generation/staging preceded timing. Both tools used the same persistent
+controller-hosted relay for control; Flock data was direct QUIC/UDP, and pinned
+croc 11.5.4 used eight TCP relay connections, `--quiet`, and no compression.
+Hardware, routing and the croc binary match the earlier method below.
+
+| Tool | Median command | Median including independent SHA-256 |
+| --- | ---: | ---: |
+| Flock / invitation v2 | 77.736 s | 86.290 s |
+| croc eight TCP connections + quiet | 80.066 s | 88.757 s |
+
+All six independent checks passed. Flock took **2.9% less time** in command time
+and **2.8% less time** including the additional readback. Flock's range was
+77.676–79.369 s; croc's was 79.994–83.089 s. This closes the measured regression;
+it is a modest advantage on this route, not a 10× bulk-speed claim. The median
+invitation-ready time fell from 9.063 s on the preceding candidate to **49 ms**;
+the full source hash still runs and is mandatory before success.
+[All six canonical 20 GiB receipts](2026-10-19-deferred-20gib.jsonl).
+
+[Two further 64 MiB transfers](2026-10-19-deferred-bidirectional.jsonl) passed
+with version 2 in both directions. [Four mixed-version checks](2026-10-19-deferred-compatibility.jsonl)
+passed using 64 KiB and 64 MiB files: the new sender selected legacy invitations
+for v0.1.0 recipients, and the older sender explicitly bound its advertised local
+interface as described below. These were functional checks during large-fixture
+generation; their timings are not performance claims.
+
+Full Go tests, focused race tests, real UDP process tests, Cgo-free tests and
+macOS/Linux/Windows CI passed for this implementation. Tests exercise delayed and
+missing digests, wrong digests, altered inventory, duplicate manifests, changed
+sources, both invitation versions and the destination coverage/error cases
+listed below. One inherited legacy relay startup test missed its ephemeral
+listener during the first full local suite; its isolated recheck and the full
+suite rerun passed. No production fallback or verification bypass was added.
+
+## Earlier candidate: builds and method
 
 - Candidate transport source: `9d152c8971717ad7547241477cbb1bb33d09733a`.
   Go 1.27.0, `CGO_ENABLED=0`, `-trimpath`, tags
@@ -100,7 +158,7 @@ time and **2.3× faster** in ZIP command time. With independent verification, th
 figures are **8.3×** and **2.2×**. This extra comparison covers A → B only;
 [all nine receipts](2026-10-19-quiet.jsonl) passed independent SHA-256 checks.
 
-## Pipelined verification update: current candidate
+## Intermediate candidate: destination verification overlaps
 
 The source at `1cb78ae7873c4c75b2310ed302417bf6643fc66e` overlaps full
 SHA-256 readback of completed destination regions with the remaining transfer.

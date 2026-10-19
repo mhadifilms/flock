@@ -180,8 +180,11 @@ The macOS performance branch batches ready QUIC datagrams and avoids looking up
 hardware identity for every file. Repeated tests between two Macs cover both
 transfer directions, a 1 GiB incompressible file, and a 1,026-file directory.
 Every received file passes an independent SHA-256 comparison. The directory is
-substantially faster than croc's normal transfer mode and its explicit ZIP mode;
-croc remains faster on the bulk file in these LAN tests.
+substantially faster than croc's normal transfer mode and its explicit ZIP mode
+in the earlier comparisons. With full source and destination hashing overlapped,
+the current candidate also closes the bulk regression: the repeated 20 GiB LAN
+comparison took 77.7 seconds versus 80.1 for quiet croc with eight TCP relay
+connections. This is a modest, mode-specific result.
 
 See [results, build fingerprints, and limits](bench/results/README.md) and the
 [reproducible two-host runner](bench/README.md). These changes are source-branch
