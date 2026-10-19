@@ -47,6 +47,27 @@ Flock's directory command completes **12.8–16.8× faster** in this comparison;
 including independent verification, **11.7–16.2× faster**. The 1 GiB command takes
 **11–16% longer** than croc. Receipts: [24 transfers](2026-10-19-lan.jsonl).
 
+## 20 GiB single-file transfer
+
+A further single A → B trial per tool transferred one full random file of
+21,474,836,480 bytes (20 GiB / 21.47 GB). The source was a temporary RAM-backed
+APFS volume because A's internal disk lacked space; B received onto its internal
+SSD. Source generation and inventory hashing preceded timing. These are not
+repeated medians or storage-durability measurements. croc used eight TCP relay
+connections with `--quiet` and compression disabled; Flock used direct QUIC/UDP
+with its normal full SHA-256 verification. Builds and routing match above.
+
+| Tool | Command | Including independent SHA-256 |
+| --- | ---: | ---: |
+| Flock | 97.451 s | 106.203 s |
+| croc eight connections + quiet | 81.097 s | 89.742 s |
+
+Both destination SHA-256 checks passed. Flock took **20.2% longer** in command
+time and **18.3% longer** including the independent check. Its command-time rate
+was approximately **210 MiB/s**, versus **253 MiB/s** for croc. This confirms a
+successful large transfer, and does not establish a bulk-speed advantage.
+[Both 20 GiB receipts](2026-10-19-20gib.jsonl).
+
 ## Explicit ZIP mode
 
 ZIP mode uses a separate interleaved run of the same directory fixture. All
