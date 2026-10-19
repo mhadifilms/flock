@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -709,7 +712,11 @@ func TestWrongPassword(t *testing.T) {
 	// Attempt to connect with wrong password
 	_, _, _, err := ConnectToTCPServer("127.0.0.1:8385", "wrongpass", "testRoom")
 	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "bad password")
+	// Windows can report WSAECONNRESET when the rejecting relay closes
+	// before its error message is delivered. Rejection and redaction still hold.
+	if runtime.GOOS != "windows" || !errors.Is(err, syscall.Errno(10054)) {
+		assert.Contains(t, err.Error(), "bad password")
+	}
 	assert.NotContains(t, err.Error(), "wrongpass")
 	assert.NotContains(t, err.Error(), "testRoom")
 }

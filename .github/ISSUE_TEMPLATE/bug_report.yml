@@ -1,5 +1,5 @@
 name: Bug Report
-description: File a bug report to help us improve croc
+description: File a bug report to help us improve Flock
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -42,9 +42,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: croc version
-      description: What version of croc are you running?
-      placeholder: Run `croc --version` and paste the output here
+      label: Flock version
+      description: What version of Flock are you running?
+      placeholder: Run `flock --version` and paste the output here
     validations:
       required: true
 
@@ -76,7 +76,7 @@ body:
     attributes:
       label: Relevant log output
       description: |
-        Please copy and paste any relevant log output. You can enable debug logging with `croc --debug` 
+        Paste relevant JSON error events and stderr diagnostics. Remove invitation capabilities. 
         This will be automatically formatted into code, so no need for backticks.
       render: shell
     validations:
