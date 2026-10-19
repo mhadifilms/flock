@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/schollz/croc/v11/src/tailcattransport"
+	"github.com/mhadifilms/flock/src/tailcattransport"
 )
 
 // tailcatStreamBuildCount is overridden with -ldflags -X for benchmark builds.

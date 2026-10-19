@@ -1,4 +1,4 @@
-module github.com/schollz/croc/v11
+module github.com/mhadifilms/flock
 
 go 1.27.0
 

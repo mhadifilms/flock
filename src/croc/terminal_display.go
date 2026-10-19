@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/termui"
 	"github.com/schollz/progressbar/v3"
 )
 

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/message"
+	"github.com/mhadifilms/flock/src/comm"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

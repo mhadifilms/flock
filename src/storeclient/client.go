@@ -20,9 +20,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/receivefs"
-	"github.com/schollz/croc/v11/src/storecrypto"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/receivefs"
+	"github.com/mhadifilms/flock/src/storecrypto"
 )
 
 const maxJSONResponse = 1 << 20

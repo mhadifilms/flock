@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/internal/tailcat"
-	"github.com/schollz/croc/v11/src/comm"
+	"github.com/mhadifilms/flock/internal/tailcat"
+	"github.com/mhadifilms/flock/src/comm"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
 )

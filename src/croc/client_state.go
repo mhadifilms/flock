@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/schollz/croc/v11/src/comm"
+	"github.com/mhadifilms/flock/src/comm"
 	"github.com/schollz/progressbar/v3"
 )
 

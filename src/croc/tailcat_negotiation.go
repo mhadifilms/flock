@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/redact"
+	"github.com/mhadifilms/flock/src/comm"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/redact"
 )
 
 const (

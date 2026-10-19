@@ -5,7 +5,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/schollz/croc/v11/src/croc"
+	"github.com/mhadifilms/flock/src/croc"
 )
 
 func TestRelayOnlySendTransportNormalizesRememberedDERP(t *testing.T) {

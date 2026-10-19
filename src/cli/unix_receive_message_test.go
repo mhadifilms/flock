@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/termui"
 )
 
 func TestFormatUnixReceiveCodeMessagePlain(t *testing.T) {

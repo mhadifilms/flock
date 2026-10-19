@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"time"
 
-	internalcli "github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/utils"
+	internalcli "github.com/mhadifilms/flock/internal/cli"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 const (

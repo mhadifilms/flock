@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/tailcattransport"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/tailcattransport"
 )
 
 type fakeTailcatTransport struct {

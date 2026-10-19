@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	internalssh "github.com/schollz/croc/v11/internal/sshclient"
+	internalssh "github.com/mhadifilms/flock/internal/sshclient"
 	"golang.org/x/term"
 )
 

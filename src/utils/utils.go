@@ -27,10 +27,10 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/kalafut/imohash"
 	"github.com/minio/highwayhash"
-	"github.com/schollz/croc/v11/src/codephrase"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/receivefs"
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/codephrase"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/receivefs"
+	"github.com/mhadifilms/flock/src/termui"
 	"github.com/schollz/progressbar/v3"
 )
 

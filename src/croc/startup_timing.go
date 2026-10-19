@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/schollz/croc/v11/src/logger"
+	log "github.com/mhadifilms/flock/src/logger"
 )
 
 type startupTiming struct {

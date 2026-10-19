@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/tcp"
-	"github.com/schollz/croc/v11/src/utils"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/tcp"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 // stop manages graceful shutdown

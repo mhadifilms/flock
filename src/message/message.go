@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/compress"
-	"github.com/schollz/croc/v11/src/crypt"
-	log "github.com/schollz/croc/v11/src/logger"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/compress"
+	"github.com/mhadifilms/flock/src/crypt"
+	log "github.com/mhadifilms/flock/src/logger"
 )
 
 const maxDecompressedMessageSize = 64 * 1024 * 1024

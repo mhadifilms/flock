@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/termui"
 )
 
 func formatUnixReceiveCodeMessage(secret string, colorEnabled bool) string {

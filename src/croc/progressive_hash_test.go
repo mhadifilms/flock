@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/schollz/croc/v11/src/utils"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 func progressiveTestFile(t *testing.T, directory, name string, data []byte) FileInfo {

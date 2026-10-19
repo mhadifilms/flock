@@ -13,21 +13,33 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
-	"github.com/schollz/croc/v11/src/codephrase"
-	"github.com/schollz/croc/v11/src/croc"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/redact"
-	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/mhadifilms/flock/src/codephrase"
+	"github.com/mhadifilms/flock/src/croc"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/redact"
+	"github.com/mhadifilms/flock/src/tcp"
 )
 
 const maxInvite = 4 << 20
+
+// Release identifies the Flock distribution, independently of the event schema.
+const Release = "0.1.0"
+
+// Main runs the installed Flock command with signal cancellation.
+func Main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	os.Exit(Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
 
 // File identifies the exact bytes the recipient must verify before completion.
 type File struct {
@@ -111,8 +123,12 @@ func Run(parent context.Context, args []string, input io.Reader, output, diagnos
 	return 0
 }
 func run(ctx context.Context, args []string, input io.Reader, e *emitter) error {
-	if len(args) == 0 || args[0] == "schema" || args[0] == "--help" || args[0] == "--version" {
-		e.emit("schema", map[string]any{"name": "flock", "protocol": "flock-v1", "transport": "quic/udp", "commands": []string{"send --advertise IPV4 [--relay HOST:PORT] FILE_OR_DIRECTORY...", "receive --out NEW_DIRECTORY [--invite-file FILE]", "relay --listen IP:PORT", "schema"}, "events": []string{"schema", "preparing", "invitation", "connecting", "transport", "progress", "completed", "error", "ready"}, "invitation": "generated 256-bit capability; pass the invitation object or invitation event on stdin", "exit_codes": map[string]int{"success": 0, "failure": 1, "timeout": 124, "cancelled": 130}})
+	if len(args) > 0 && (args[0] == "--version" || args[0] == "version") {
+		e.emit("version", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "transport": "quic/udp"})
+		return nil
+	}
+	if len(args) == 0 || args[0] == "schema" || args[0] == "--help" {
+		e.emit("schema", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "transport": "quic/udp", "commands": []string{"send --advertise IPV4 [--relay HOST:PORT] FILE_OR_DIRECTORY...", "receive --out NEW_DIRECTORY [--invite-file FILE]", "relay --listen IP:PORT", "schema"}, "events": []string{"schema", "version", "preparing", "invitation", "connecting", "transport", "progress", "completed", "error", "ready"}, "invitation": "generated 256-bit capability; pass the invitation object or invitation event on stdin", "exit_codes": map[string]int{"success": 0, "failure": 1, "timeout": 124, "cancelled": 130}})
 		return nil
 	}
 	command := args[0]

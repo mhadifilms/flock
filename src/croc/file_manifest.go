@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/message"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/message"
 )
 
 const (

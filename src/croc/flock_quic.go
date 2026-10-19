@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/tailcattransport"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/tailcattransport"
 )
 
 const flockQUICFeature = "flock-quic-v1"

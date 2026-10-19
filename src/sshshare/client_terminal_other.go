@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 
-	internalssh "github.com/schollz/croc/v11/internal/sshclient"
+	internalssh "github.com/mhadifilms/flock/internal/sshclient"
 )
 
 func watchWindowChanges(context.Context, *os.File) (<-chan internalssh.WindowSize, func()) {

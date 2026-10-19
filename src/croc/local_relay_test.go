@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/mhadifilms/flock/src/tcp"
 )
 
 type reservedTestListener struct {

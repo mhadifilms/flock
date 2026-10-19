@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/utils"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 func TestRequestedChunkQueueLateWorkersClaimExactlyOnce(t *testing.T) {

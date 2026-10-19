@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/schollz/croc/v11/src/receivefs"
+	"github.com/mhadifilms/flock/src/receivefs"
 )
 
 const (

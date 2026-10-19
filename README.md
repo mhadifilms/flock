@@ -1,29 +1,45 @@
 # Flock
 
-Agent-first file transfer, forked from [croc](https://github.com/schollz/croc).
-Flock carries file bytes over **native QUIC/UDP** and gives agents a versioned
-JSON Lines interface with generated invitations, progress, deadlines, and
-verified receive results.
+Agent-first file transfer over **native QUIC/UDP**, with JSON Lines events,
+automatic pairing invitations, deadlines, and verified receive results.
 
-**Experimental first implementation.** Directly reachable IPv4 peers work on a
-LAN or an overlay such as Tailscale. Internet NAT discovery, UDP relay fallback,
-and geographic WAN qualification are future work. There is no demonstrated
-speed advantage over croc yet; UDP alone does not guarantee one.
+**Early release.** Directly reachable IPv4 peers work on a LAN or an overlay
+such as Tailscale. Internet NAT discovery, UDP relay fallback, and geographic
+WAN qualification are future work. Performance comparisons are still pending.
 
-## Build
+## Install
 
-Requires Go 1.27 or newer (inherited from the pinned croc base).
+### Homebrew (macOS and Linux)
+
+```sh
+brew install mhadifilms/tap/flock
+flock --version
+```
+
+This tap installs a checksum-verified native binary. No Go or Python runtime is
+required. To upgrade: `brew upgrade mhadifilms/tap/flock`.
+
+### Go
+
+With Go 1.27 or newer:
+
+```sh
+go install github.com/mhadifilms/flock@v0.1.0
+flock --version
+```
+
+Prebuilt macOS, Linux, and Windows binaries and `SHA256SUMS` are available from
+[Flock releases](https://github.com/mhadifilms/flock/releases). PyPI is not needed
+for this native Go tool.
+
+### From source
 
 ```sh
 git clone https://github.com/mhadifilms/flock.git
 cd flock
-go build -o flock ./cmd/flock
+go build -o flock .
 ./flock schema
 ```
-
-Until the initial feature PR is merged, check out `feat/agent-first-udp` before
-building. `go build .` still builds the inherited croc command. There are no
-Flock release binaries or packages yet.
 
 ## Two agents, two processes
 
@@ -99,8 +115,8 @@ limited to 4 MiB and 10,000 file/directory entries.
 
 ## Transport
 
-Flock reuses croc's PAKE, encrypted control messages, chunk framing, file handling,
-and transport negotiation. It adds a QUIC adapter using
+Flock uses PAKE, encrypted control messages, chunk framing, file handling,
+and authenticated transport negotiation. It adds a QUIC adapter using
 [quic-go](https://github.com/quic-go/quic-go), with TLS 1.3 mutual authentication
 bound to the PAKE session. The authenticated control channel exchanges UDP
 endpoints; repeated outbound probes help establish bidirectional UDP traffic.
@@ -108,8 +124,7 @@ The default is eight bidirectional streams on one QUIC connection; set
 `--streams 1` through `--streams 16` to experiment.
 
 TCP carries pairing/control only. File data requires QUIC and **does not silently
-fall back to TCP**. The peer must advertise Flock support. This is not a croc
-wire-compatible file-data mode, although the inherited croc CLI remains available.
+fall back to TCP**. The peer must advertise Flock support. Both peers must run Flock for this file-data mode.
 
 The advertised IPv4 address must be reachable at the actual UDP listener port.
 The default embedded control listener uses a random TCP port; both that TCP port
@@ -120,7 +135,7 @@ and the UDP port must be reachable. To pin them for firewall rules:
   --control-listen 0.0.0.0:9009 --udp-listen 0.0.0.0:9010 ./folder
 ```
 
-An existing croc control relay can be selected with `--relay HOST:PORT`. Flock
+An existing compatible control relay can be selected with `--relay HOST:PORT`. Flock
 also provides a control-only relay:
 
 ```sh
@@ -152,13 +167,20 @@ The first native macOS-to-macOS LAN check transferred an incompressible 64 MiB
 file plus nested/empty entries in **2.598 seconds end to end (24.64 MiB/s)**,
 including startup and SHA-256 work. Both processes exited successfully; a separate
 remote `shasum -a 256` matched the source. This is a single functional measurement,
-not a croc comparison or a WAN performance result. Benchmarking and tuning remain
+not a comparative benchmark or a WAN performance result. Benchmarking and tuning remain
 necessary before making speed claims.
 
-## Upstream and license
+## License and provenance
 
-Flock is an MIT-licensed fork, not an upstream croc release. See [UPSTREAM.md](UPSTREAM.md)
-for the pinned base and upstream documentation. The original [LICENSE](LICENSE)
-and upstream attribution are preserved. The Go module path remains the upstream
-path in this first slice to avoid unrelated import churn; build Flock from this
-checkout using `./cmd/flock`.
+Flock is MIT-licensed. Original copyright notices remain in [LICENSE](LICENSE);
+[UPSTREAM.md](UPSTREAM.md) records the fork's provenance. Go module dependencies
+retain their respective licenses, included with the release archives.
+
+## Building releases
+
+`python3 packaging/flock_release.py --version 0.1.0 --output dist` creates
+native archives for macOS, Linux, and Windows on ARM64 and AMD64, plus
+`SHA256SUMS`. The version must match `internal/flockcli.Release`. The script
+builds and packages only; publishing and updating the Homebrew formula are
+separate steps. Inherited upstream packaging scripts are kept as source history
+and are not used for Flock distribution.

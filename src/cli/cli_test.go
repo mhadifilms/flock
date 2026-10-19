@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/croc"
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/publicrelay"
-	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/mhadifilms/flock/internal/cli"
+	"github.com/mhadifilms/flock/src/croc"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/publicrelay"
+	"github.com/mhadifilms/flock/src/tcp"
 	"github.com/stretchr/testify/require"
 )
 

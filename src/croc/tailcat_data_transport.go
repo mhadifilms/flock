@@ -6,8 +6,8 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/tailcattransport"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/tailcattransport"
 )
 
 // tailcatDataTransport keeps Tailcat construction behind a client-owned seam.

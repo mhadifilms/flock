@@ -6,8 +6,7 @@ or command behavior.
 
 ## Scope and verification
 
-Keep changes focused. Build the agent command with `go build ./cmd/flock`;
-`go build .` builds the inherited croc command. Run the relevant Go tests and
+Keep changes focused. Build the installed Flock command with `go build .` (or `./cmd/flock`). Run the relevant Go tests and
 `go fix ./...` before publishing. For transport changes, exercise actual UDP
 sockets and receiver verification. Do not claim a speedup without a comparable
 measurement; distinguish LAN, overlays, simulation, and geographic WAN results.
@@ -30,7 +29,13 @@ normal Git/GitHub CLI workflow above.
 
 ## Releases
 
-Do not trigger inherited croc release, packaging publication, or deployment
-workflows as part of development. They have not been adapted for Flock. Do not
-create or move release tags or publish binaries without a separately requested
-Flock release plan. Ordinary test CI is appropriate for pull requests.
+Flock releases use `packaging/flock_release.py`, which builds archives and
+checksums without publishing. Keep `internal/flockcli.Release`, the release tag,
+and Homebrew formula version aligned. Include LICENSE and dependency notices in
+binary archives. Publish only a tested commit and verify downloaded assets and
+package-manager installation before claiming a release is available.
+
+The user's request for public package-manager installation authorizes the first
+Flock release and the necessary PR merges. For future releases, obtain release
+authorization. Never use the inherited upstream release/deployment scripts for
+Flock; they have not been adapted for this project.

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/codephrase"
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/mhadifilms/flock/src/codephrase"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/tcp"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
 )
