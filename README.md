@@ -47,7 +47,7 @@ Start the sender with an IPv4 address the recipient can reach. It automatically
 hosts a temporary TCP control relay and opens a UDP listener:
 
 ```sh
-./flock send --advertise 100.64.0.10 ./folder
+flock send --advertise 100.64.0.10 ./folder
 ```
 
 Read stdout as JSON Lines. The `invitation` event contains an `invite` object.
@@ -57,9 +57,9 @@ agent channel. Keep the sender process running.
 On the other computer:
 
 ```sh
-./flock receive --out ./received --invite-file invitation.json
+flock receive --out ./received --invite-file invitation.json
 # Or pass the same JSON object on stdin:
-./flock receive --out ./received < invitation.json
+flock receive --out ./received < invitation.json
 ```
 
 There is no human code to choose or type, no clipboard dependency, and no
@@ -131,7 +131,7 @@ The default embedded control listener uses a random TCP port; both that TCP port
 and the UDP port must be reachable. To pin them for firewall rules:
 
 ```sh
-./flock send --advertise 100.64.0.10 \
+flock send --advertise 100.64.0.10 \
   --control-listen 0.0.0.0:9009 --udp-listen 0.0.0.0:9010 ./folder
 ```
 
@@ -139,8 +139,8 @@ An existing compatible control relay can be selected with `--relay HOST:PORT`. F
 also provides a control-only relay:
 
 ```sh
-./flock relay --listen 0.0.0.0:9009
-./flock send --relay relay.example:9009 --advertise 100.64.0.10 ./folder
+flock relay --listen 0.0.0.0:9009
+flock send --relay relay.example:9009 --advertise 100.64.0.10 ./folder
 ```
 
 If configured, set the same `FLOCK_RELAY_PASSWORD` on the relay and both peers.

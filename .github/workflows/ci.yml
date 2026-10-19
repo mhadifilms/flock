@@ -3,7 +3,9 @@ name: Flock CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md"]
   pull_request:
+    paths-ignore: ["**/*.md"]
   workflow_dispatch:
 
 permissions:
@@ -32,8 +34,14 @@ jobs:
         run: |
           go fix ./...
           git diff --exit-code
-      - name: Test
+      - name: Test all packages
+        if: runner.os != 'Windows'
         run: go test ./...
+      - name: Test portable Flock runtime
+        if: runner.os == 'Windows'
+        # The retained legacy interactive CLI has Unix-only tests. Flock does
+        # not ship that command; exercise its own interface and runtime here.
+        run: go test ./internal/flockcli ./src/croc ./src/codephrase ./src/receivefs ./src/comm ./src/tcp ./src/utils ./src/message ./src/pakekey ./src/redact ./src/crypt ./src/compress
       - name: Build installed command
         run: go build ./
       - name: Verify Flock version
