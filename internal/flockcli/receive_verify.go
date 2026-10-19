@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -23,14 +24,25 @@ const verifyChunkSize = int64(models.TCP_BUFFER_SIZE / 2)
 // as a substitute for reading the destination file. Small files retain the
 // ordinary post-transfer path. Memory is bounded even for hostile file sizes.
 type receiveVerifier struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	files  map[string]*receiveFileVerifier
+	deferred      bool
+	manifestReady chan struct{}
+	manifestMu    sync.Mutex
+	manifestSeen  bool
+	expectedFiles []File
+	ctx           context.Context
+	cancel        context.CancelFunc
+	files         map[string]*receiveFileVerifier
 }
 
 func newReceiveVerifier(ctx context.Context, files []File) *receiveVerifier {
 	ctx, cancel := context.WithCancel(ctx)
 	v := &receiveVerifier{ctx: ctx, cancel: cancel, files: make(map[string]*receiveFileVerifier)}
+	v.deferred = len(files) == 1 && files[0].SHA256 == ""
+	v.manifestReady = make(chan struct{})
+	v.expectedFiles = append([]File(nil), files...)
+	if !v.deferred {
+		close(v.manifestReady)
+	}
 	for _, file := range files {
 		if file.Size < 8<<20 {
 			continue
@@ -54,6 +66,9 @@ func (v *receiveVerifier) written(info croc.FileInfo, position int64, length int
 	return nil
 }
 func (v *receiveVerifier) finishFile(info croc.FileInfo) error {
+	if err := v.waitManifest(v.ctx); err != nil {
+		return err
+	}
 	if file := v.file(info); file != nil {
 		return file.finish()
 	}
@@ -224,4 +239,61 @@ func (v *receiveFileVerifier) readBack(file *os.File) {
 		}
 		return
 	}
+}
+
+// A version-2 invitation commits to names and sizes immediately; the complete
+// digest arrives later over the authenticated control channel. It cannot change
+// that inventory, and success cannot precede this message and full readback.
+func (v *receiveVerifier) acceptManifest(data []byte) (err error) {
+	defer func() {
+		if err != nil {
+			v.cancel()
+		}
+	}()
+	if !v.deferred || len(data) > maxInvite {
+		return errors.New("unexpected source SHA-256 manifest")
+	}
+	v.manifestMu.Lock()
+	defer v.manifestMu.Unlock()
+	if v.manifestSeen {
+		return errors.New("duplicate source SHA-256 manifest")
+	}
+	var files []File
+	if json.Unmarshal(data, &files) != nil || len(files) != len(v.expectedFiles) {
+		return errors.New("invalid source SHA-256 manifest")
+	}
+	for i, file := range files {
+		expected := v.expectedFiles[i]
+		digest, err := hex.DecodeString(file.SHA256)
+		if file.Path != expected.Path || file.Size != expected.Size || err != nil || len(digest) != 32 {
+			return errors.New("source SHA-256 manifest differs from invitation")
+		}
+	}
+	v.expectedFiles = files
+	for _, file := range files {
+		if state := v.files[file.Path]; state != nil {
+			state.mu.Lock()
+			state.want.SHA256 = file.SHA256
+			state.mu.Unlock()
+		}
+	}
+	v.manifestSeen = true
+	close(v.manifestReady)
+	return nil
+}
+func (v *receiveVerifier) waitManifest(ctx context.Context) error {
+	select {
+	case <-v.manifestReady:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (v *receiveVerifier) manifest(ctx context.Context) ([]File, error) {
+	if err := v.waitManifest(ctx); err != nil {
+		return nil, err
+	}
+	v.manifestMu.Lock()
+	defer v.manifestMu.Unlock()
+	return append([]File(nil), v.expectedFiles...), nil
 }

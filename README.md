@@ -65,8 +65,17 @@ flock receive --out ./received < invitation.json
 
 There is no human code to choose or type, no clipboard dependency, and no
 confirmation prompt. The invitation is a generated 256-bit bearer capability
-with an expiry, control address, relative paths, sizes, and SHA-256 hashes.
+with an expiry, control address, relative paths and sizes. For one large file,
+version 2 lets transfer begin while the full source SHA-256 is computed; that
+digest arrives over the authenticated encrypted control channel. The receiver
+cannot succeed without matching it against full destination readback. Other
+transfers use version 1 with SHA-256 hashes already in the invitation.
 It grants access to this transfer: treat it as a secret when handing it off.
+
+To include a large file's SHA-256 before pairing, or send to an older receiver,
+use `flock send --legacy-invitation --advertise IPV4 FILE`. The new receiver
+accepts both invitation versions. The final `completed` manifest includes every
+full SHA-256 in both modes.
 
 For example, an agent reading a sender subprocess can extract the invitation:
 

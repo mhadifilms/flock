@@ -5,10 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"github.com/mhadifilms/flock/src/croc"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -163,5 +166,78 @@ func TestReceiveVerifierCancellationAndBounds(t *testing.T) {
 	}
 	if !bytes.Equal(data[:3], []byte{0, 73, 146}) {
 		t.Fatal("fixture changed")
+	}
+}
+
+func TestReceiveVerifierWaitsForAuthenticatedSourceDigest(t *testing.T) {
+	for _, mode := range []string{"valid", "wrong-digest", "wrong-inventory", "missing"} {
+		t.Run(mode, func(t *testing.T) {
+			state, file, data, _ := verificationFixture(t, (8<<20)+37)
+			want := state.want
+			want.Path = filepath.ToSlash(want.Path)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			unsigned := want
+			unsigned.SHA256 = ""
+			verifier := newReceiveVerifier(ctx, []File{unsigned})
+			defer verifier.close()
+			info := croc.FileInfo{Name: filepath.Base(want.Path), FolderRemote: filepath.ToSlash(filepath.Dir(want.Path))}
+			if _, err := file.WriteAt(data, 0); err != nil {
+				t.Fatal(err)
+			}
+			for position := int64(0); position < int64(len(data)); position += verifyChunkSize {
+				if err := verifier.written(info, position, int(min(verifyChunkSize, int64(len(data))-position))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			finished := make(chan error, 1)
+			go func() { finished <- verifier.finishFile(info) }()
+			select {
+			case err := <-finished:
+				t.Fatalf("completed without source digest: %v", err)
+			case <-time.After(10 * time.Millisecond):
+			}
+			if mode == "missing" {
+				cancel()
+				if err := <-finished; err == nil {
+					t.Fatal("missing source digest succeeded")
+				}
+				return
+			}
+			announced := want
+			if mode == "wrong-digest" {
+				announced.SHA256 = strings.Repeat("0", 64)
+			}
+			if mode == "wrong-inventory" {
+				announced.Size++
+			}
+			encoded, _ := json.Marshal([]File{announced})
+			err := verifier.acceptManifest(encoded)
+			if mode == "wrong-inventory" {
+				if err == nil {
+					t.Fatal("accepted changed inventory")
+				}
+				if err := <-finished; err == nil {
+					t.Fatal("changed inventory succeeded")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = <-finished
+			if mode == "wrong-digest" {
+				if err == nil {
+					t.Fatal("unverified source digest succeeded")
+				}
+				return
+			}
+			if err != nil || !verifier.verified(want.Path) {
+				t.Fatalf("valid digest failed: %v", err)
+			}
+			if err := verifier.acceptManifest(encoded); err == nil {
+				t.Fatal("accepted duplicate source digest")
+			}
+		})
 	}
 }

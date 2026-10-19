@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/mhadifilms/flock/src/message"
 	"net"
 	"strings"
 	"testing"
@@ -79,5 +80,23 @@ func TestFlockTLSAuthenticatesBothRoles(t *testing.T) {
 				t.Fatal("wrong session accepted")
 			}
 		})
+	}
+}
+
+func TestFlockSourceManifestRequiresAuthenticatedReceiver(t *testing.T) {
+	called := false
+	client := &Client{Options: Options{OnSourceManifest: func(data []byte) error { called = true; return nil }}}
+	m := message.Message{Type: flockSourceHashMessage, Bytes: []byte("[]")}
+	if err := client.processSourceManifest(m); err == nil || called {
+		t.Fatal("accepted unauthenticated source manifest")
+	}
+	client.Key = make([]byte, 32)
+	client.Options.IsSender = true
+	if err := client.processSourceManifest(m); err == nil || called {
+		t.Fatal("sender accepted a source manifest")
+	}
+	client.Options.IsSender = false
+	if err := client.processSourceManifest(m); err != nil || !called {
+		t.Fatalf("authenticated receiver rejected manifest: %v", err)
 	}
 }

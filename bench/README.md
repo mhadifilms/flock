@@ -45,7 +45,11 @@ connections. `croczip` adds croc's explicit ZIP batching mode.
 and native completion. Flock includes full sender and receiver SHA-256; large destination readback
 can overlap transfer once complete regions are available.
 croc retains its normal xxhash behavior. `verified_seconds` additionally includes
-an independent SHA-256 pass over the received files for **both** tools. Every
+an independent SHA-256 pass over the received files for **both** tools. For a single
+large file, invitation version 2 also overlaps the full source hash with transfer
+and delivers it over authenticated encrypted control; every receiver must match
+it before success. Metrics record `invitation_version`. Version 1 retains an
+upfront source hash. Every
 file must match the source path, size and hash, and the empty directory must
 survive. Neither time is a disk-durability/fsync measurement.
 

@@ -124,11 +124,11 @@ func Run(parent context.Context, args []string, input io.Reader, output, diagnos
 }
 func run(ctx context.Context, args []string, input io.Reader, e *emitter) error {
 	if len(args) > 0 && (args[0] == "--version" || args[0] == "version") {
-		e.emit("version", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "transport": "quic/udp"})
+		e.emit("version", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "invitation_versions": []int{1, 2}, "transport": "quic/udp"})
 		return nil
 	}
 	if len(args) == 0 || args[0] == "schema" || args[0] == "--help" {
-		e.emit("schema", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "transport": "quic/udp", "commands": []string{"send --advertise IPV4 [--relay HOST:PORT] FILE_OR_DIRECTORY...", "receive --out NEW_DIRECTORY [--invite-file FILE]", "relay --listen IP:PORT", "schema"}, "events": []string{"schema", "version", "preparing", "invitation", "connecting", "transport", "progress", "completed", "error", "ready"}, "invitation": "generated 256-bit capability; pass the invitation object or invitation event on stdin", "exit_codes": map[string]int{"success": 0, "failure": 1, "timeout": 124, "cancelled": 130}})
+		e.emit("schema", map[string]any{"name": "flock", "release": Release, "protocol": "flock-v1", "invitation_versions": []int{1, 2}, "transport": "quic/udp", "commands": []string{"send --advertise IPV4 [--relay HOST:PORT] [--legacy-invitation] FILE_OR_DIRECTORY...", "receive --out NEW_DIRECTORY [--invite-file FILE]", "relay --listen IP:PORT", "schema"}, "events": []string{"schema", "version", "preparing", "invitation", "connecting", "transport", "progress", "completed", "error", "ready"}, "invitation": "generated 256-bit capability; pass the invitation object or invitation event on stdin", "exit_codes": map[string]int{"success": 0, "failure": 1, "timeout": 124, "cancelled": 130}})
 		return nil
 	}
 	command := args[0]
@@ -143,6 +143,7 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 	controlListen := flags.String("control-listen", "0.0.0.0:0", "embedded control relay bind address")
 	udpListen := flags.String("udp-listen", "0.0.0.0:0", "sender UDP bind address")
 	out := flags.String("out", "", "new receive directory")
+	legacyInvitation := flags.Bool("legacy-invitation", false, "hash before inviting an older receiver")
 	inviteFile := flags.String("invite-file", "", "invitation JSON file; default stdin")
 	timeout := flags.Duration("timeout", 30*time.Minute, "overall deadline")
 	streams := flags.Int("streams", 8, "parallel QUIC streams, 1 to 16")
@@ -173,6 +174,7 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 	var invite Invitation
 	var files, folders []croc.FileInfo
 	var folderCount int
+	var deferredSource *sourceManifest
 	if command == "send" {
 		if flags.NArg() == 0 {
 			return errors.New("send requires --advertise and at least one path")
@@ -197,21 +199,32 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 		if err != nil {
 			return err
 		}
+		deferred := !*legacyInvitation && len(files) == 1 && files[0].Size >= 8<<20
+		if deferred {
+			deferredSource = &sourceManifest{ready: make(chan struct{})}
+		}
 		token := make([]byte, 32)
 		if _, err = rand.Read(token); err != nil {
 			return err
 		}
 		invite = Invitation{Version: 1, Transport: "quic/udp", Capability: "flock1:" + hex.EncodeToString(token), Relay: *relay, Expires: time.Now().Add(*timeout).Unix(), Files: []File{}, Directories: []string{}}
+		if deferred {
+			invite.Version = 2
+		}
 		for _, f := range files {
 			relative, err := safePath(path.Join(f.FolderRemote, f.Name))
 			if err != nil || f.Symlink != "" || f.Mode&os.ModeSymlink != 0 {
 				return errors.New("agent transfers require regular files and directories")
 			}
-			digest, size, err := hashFile(ctx, filepath.Join(f.FolderSource, f.Name))
-			if err != nil {
-				return err
+			if deferred {
+				invite.Files = append(invite.Files, File{relative, f.Size, ""})
+			} else {
+				digest, size, err := hashFile(ctx, filepath.Join(f.FolderSource, f.Name))
+				if err != nil {
+					return err
+				}
+				invite.Files = append(invite.Files, File{relative, size, digest})
 			}
-			invite.Files = append(invite.Files, File{relative, size, digest})
 		}
 		for _, f := range folders {
 			relative, err := safePath(f.FolderRemote)
@@ -286,10 +299,16 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 	}
 	options := croc.Options{IsSender: command == "send", SharedSecret: invite.Capability, RelayAddress: invite.Relay, RelayPassword: password, NoPrompt: true, DisableLocal: true, DisableClipboard: true, IgnoreStdin: true, NoCompress: true, Curve: "p256", HashAlgorithm: hashAlgorithm, Agent: true, OnProgress: e.progress, OnTransport: func(status string) { e.emit("transport", map[string]any{"transport": "quic/udp", "status": status}) },
 		OnOffer: func(offered, empty []croc.FileInfo) error { return matchOffer(invite, offered, empty) }}
+	if deferredSource != nil {
+		options.SourceManifest = deferredSource.encoded
+	}
 	var verifier *receiveVerifier
 	if command == "receive" {
 		verifier = newReceiveVerifier(ctx, invite.Files)
 		defer verifier.close()
+		if invite.Version == 2 {
+			options.OnSourceManifest = verifier.acceptManifest
+		}
 		options.OnChunkWritten = verifier.written
 		options.OnFileReceived = verifier.finishFile
 	}
@@ -300,10 +319,19 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 	defer client.Cancel()
 	if command == "send" {
 		e.emit("invitation", map[string]any{"invite": invite})
+		if deferredSource != nil {
+			deferredSource.start(ctx, files, invite.Files)
+		}
 		err = client.Send(files, folders, folderCount)
+		if err == nil && deferredSource != nil {
+			invite.Files, err = deferredSource.get(ctx)
+		}
 	} else {
 		e.emit("connecting", map[string]any{"transport": "quic/udp"})
 		err = client.Receive()
+		if err == nil && invite.Version == 2 {
+			invite.Files, err = verifier.manifest(ctx)
+		}
 		if err == nil {
 			for _, file := range invite.Files {
 				if verifier.verified(file.Path) {
@@ -339,8 +367,11 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 	return nil
 }
 func (i Invitation) validate() error {
-	if i.Version != 1 || i.Transport != "quic/udp" || !strings.HasPrefix(i.Capability, "flock1:") || i.Expires <= time.Now().Unix() || len(i.Files)+len(i.Directories) > 10000 {
+	if (i.Version != 1 && i.Version != 2) || i.Transport != "quic/udp" || !strings.HasPrefix(i.Capability, "flock1:") || i.Expires <= time.Now().Unix() || len(i.Files)+len(i.Directories) > 10000 {
 		return errors.New("invalid or expired Flock invitation")
+	}
+	if i.Version == 2 && (len(i.Files) != 1 || i.Files[0].Size < 8<<20) {
+		return errors.New("invalid deferred-hash invitation")
 	}
 	if _, err := codephrase.Parse(i.Capability); err != nil {
 		return errors.New("invalid Flock capability")
@@ -353,7 +384,11 @@ func (i Invitation) validate() error {
 	for _, f := range i.Files {
 		name, err := safePath(f.Path)
 		digest, e := hex.DecodeString(f.SHA256)
-		if err != nil || name != f.Path || f.Size < 0 || e != nil || len(digest) != 32 || seen[strings.ToLower(name)] {
+		validDigest := e == nil && len(digest) == 32
+		if i.Version == 2 {
+			validDigest = len(i.Files) == 1 && f.Size >= 8<<20 && f.SHA256 == ""
+		}
+		if err != nil || name != f.Path || f.Size < 0 || !validDigest || seen[strings.ToLower(name)] {
 			return errors.New("invalid invitation file manifest")
 		}
 		seen[strings.ToLower(name)] = true

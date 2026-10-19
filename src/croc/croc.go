@@ -94,12 +94,14 @@ func Debug(debug bool) {
 
 // Options specifies user specific options
 type Options struct {
-	Agent             bool                               `json:"-"`
-	OnChunkWritten    func(FileInfo, int64, int) error   `json:"-"`
-	OnFileReceived    func(FileInfo) error               `json:"-"`
-	OnProgress        func(int64)                        `json:"-"`
-	OnTransport       func(string)                       `json:"-"`
-	OnOffer           func([]FileInfo, []FileInfo) error `json:"-"`
+	Agent             bool                                  `json:"-"`
+	OnChunkWritten    func(FileInfo, int64, int) error      `json:"-"`
+	OnFileReceived    func(FileInfo) error                  `json:"-"`
+	OnProgress        func(int64)                           `json:"-"`
+	OnTransport       func(string)                          `json:"-"`
+	OnOffer           func([]FileInfo, []FileInfo) error    `json:"-"`
+	SourceManifest    func(context.Context) ([]byte, error) `json:"-"`
+	OnSourceManifest  func([]byte) error                    `json:"-"`
 	IsSender          bool
 	SharedSecret      string
 	RoomName          string
@@ -199,6 +201,7 @@ func (c *Client) cachedMachineID() string {
 
 // Client holds the state of the croc transfer.
 type Client struct {
+	sourceManifestOnce              sync.Once
 	Options                         Options
 	Pake                            *pake.Pake
 	Key                             []byte
@@ -2647,6 +2650,9 @@ func (c *Client) processMessagePake(m message.Message, attempt *transferAttemptS
 	if _, ok := c.dataTransport().(*flockTransport); ok && !supportsFeature(m.Features, flockQUICFeature) {
 		return errors.New("peer does not support Flock QUIC")
 	}
+	if (c.Options.SourceManifest != nil || c.Options.OnSourceManifest != nil) && !supportsFeature(m.Features, flockSourceHashFeature) {
+		return errors.New("peer does not support deferred Flock SHA-256")
+	}
 	c.tailcat.peerRequired = supportsFeature(m.Features, tailcatRequiredFeature)
 	c.peerInlineMetadata = supportsFeature(m.Features, inlinePeerMetadataFeature)
 	c.peerProgressiveHash = supportsFeature(m.Features, progressiveFileHashFeature)
@@ -2962,6 +2968,8 @@ func (c *Client) processMessage(payload []byte, attempt *transferAttemptState) (
 		}
 	case message.TypeTailcatOffer:
 		err = c.processTailcatOffer(m, attempt)
+	case flockSourceHashMessage:
+		err = c.processSourceManifest(m)
 	case message.TypeTailcatStatus:
 		err = c.processUnexpectedTailcatStatus(m)
 	case message.TypeTransportSelect:

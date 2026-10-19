@@ -225,6 +225,7 @@ def main():
                                         prepare_seconds=round(prepared, 6) if prepared else None,
                                         independent_sha256=True, transport='tcp' if is_croc else 'quic/udp',
                                         croc_quiet=args.croc_quiet if is_croc else False)
+                                    row['invitation_version'] = invitation['invite']['version'] if invitation else None
                                     with args.output.open('a') as output:
                                         output.write(json.dumps(row) + '\n')
                                     print(json.dumps(row), flush=True)
