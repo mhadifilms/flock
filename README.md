@@ -1,649 +1,164 @@
-<p align="center">
-  <a href="https://getcroc.com"><img src="web/src/assets/croc.jpg" width="408px" border="0" alt="croc"></a>
-  <br>
-  <a href="https://github.com/schollz/croc/releases/latest"><img src="https://img.shields.io/github/v/release/schollz/croc" alt="Version"></a>
-  <a href="https://github.com/schollz/croc/actions/workflows/ci.yml"><img src="https://github.com/schollz/croc/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/sponsors/schollz"><img alt="GitHub Sponsors" src="https://img.shields.io/github/sponsors/schollz"></a>
-</p>
-<p align="center">
-  <strong>This project’s future depends on community support. <a href="https://github.com/sponsors/schollz">Become a sponsor today</a>.</strong>
-</p>
+# Flock
 
+Agent-first file transfer, forked from [croc](https://github.com/schollz/croc).
+Flock carries file bytes over **native QUIC/UDP** and gives agents a versioned
+JSON Lines interface with generated invitations, progress, deadlines, and
+verified receive results.
 
-## About
+**Experimental first implementation.** Directly reachable IPv4 peers work on a
+LAN or an overlay such as Tailscale. Internet NAT discovery, UDP relay fallback,
+and geographic WAN qualification are future work. There is no demonstrated
+speed advantage over croc yet; UDP alone does not guarantee one.
 
-`croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, _croc_ is the only CLI file-transfer tool that does **all** of the following:
+## Build
 
-- Allows **any two computers** to transfer data (p2p with relay fallback)
-- Provides **end-to-end encryption** (using PAKE)
-- Enables easy **cross-platform** transfers (Windows, Linux, Mac, [Browser](https://getcroc.com))
-- Allows **multiple file** transfers
-- Allows **resuming transfers** that are interrupted
-- No need for local server or port-forwarding
-- **IPv6-first** with IPv4 fallback
-- Can **use a proxy**, like Tor
+Requires Go 1.27 or newer (inherited from the pinned croc base).
 
-For more information about `croc`, see [my blog post](https://schollz.com/tinker/croc6/) or read a [recent interview I did](https://console.substack.com/p/console-91).
-
-![Example](src/install/customization.gif)
-
-## No-install
-
-You can use croc without installing anything at [getcroc.com](https://getcroc.com).
-
-The browser version is fully compatible with the CLI, so you can send and receive files between them.
-
-## Install
-
-You can download [the latest release for your system](https://github.com/schollz/croc/releases/latest), or install a release from the command-line:
-
-```bash
-curl https://getcroc.com | bash
+```sh
+git clone https://github.com/mhadifilms/flock.git
+cd flock
+go build -o flock ./cmd/flock
+./flock schema
 ```
 
-When the CLI sends or receives a transfer, it checks for a newer croc release at
-most once every 24 hours. The check runs in the background and any update notice
-is shown after the transfer finishes. Run `croc update --check` at any time to
-check explicitly. Installations made by the command above can use `croc update`
-(`croc upgrade` is an alias) to verify and install a stable release when the
-executable is user-writable; pass `--yes` to skip confirmation.
-Package-managed and other installations are never overwritten; the command
-prints the appropriate upgrade guidance instead. Network and release-service
-failures in background checks are ignored; `--quiet` suppresses the notice.
+Until the initial feature PR is merged, check out `feat/agent-first-udp` before
+building. `go build .` still builds the inherited croc command. There are no
+Flock release binaries or packages yet.
 
-### On macOS
+## Two agents, two processes
 
-Using [Homebrew](https://brew.sh/):
+Start the sender with an IPv4 address the recipient can reach. It automatically
+hosts a temporary TCP control relay and opens a UDP listener:
 
-```bash
-brew install croc
+```sh
+./flock send --advertise 100.64.0.10 ./folder
 ```
 
-Using [MacPorts](https://www.macports.org/):
+Read stdout as JSON Lines. The `invitation` event contains an `invite` object.
+Pass that object, or the whole event, to the recipient over your existing trusted
+agent channel. Keep the sender process running.
 
-```bash
-sudo port selfupdate
-sudo port install croc
+On the other computer:
+
+```sh
+./flock receive --out ./received --invite-file invitation.json
+# Or pass the same JSON object on stdin:
+./flock receive --out ./received < invitation.json
 ```
 
-### On Windows
+There is no human code to choose or type, no clipboard dependency, and no
+confirmation prompt. The invitation is a generated 256-bit bearer capability
+with an expiry, control address, relative paths, sizes, and SHA-256 hashes.
+It grants access to this transfer: treat it as a secret when handing it off.
 
-You can install the latest release with [Scoop](https://scoop.sh/) or
-[Chocolatey](https://chocolatey.org/):
+For example, an agent reading a sender subprocess can extract the invitation:
 
-```bash
-scoop install croc
+```python
+for line in sender.stdout:
+    event = json.loads(line)
+    if event["event"] == "invitation":
+        handoff = json.dumps(event["invite"])
+        # Deliver handoff to the recipient agent; continue draining sender.stdout.
 ```
 
-```bash
-choco install croc
+Do not pipe the entire sender event stream into the recipient. Hand over the
+single invitation object and continue consuming each process's events.
+
+## Agent contract
+
+Stdout always contains JSON Lines, including argument errors and help. Stderr
+is reserved for diagnostics. `flock schema` describes commands, event names,
+and exit codes. All events have `version: 1` and `event` fields.
+
+| Event | Meaning |
+| --- | --- |
+| `preparing` | Inventory and hash source files |
+| `invitation` | Generated transfer capability and expected file manifest |
+| `connecting` | Recipient is pairing |
+| `transport` | QUIC listener/connection state |
+| `progress` | Cumulative application bytes transferred |
+| `completed` | Role-specific result, manifest, and byte count |
+| `error` | Stable error code and diagnostic message |
+| `ready` | Standalone control relay is listening |
+
+The recipient emits `completed` with `sha256_verified: true` **only after every
+received file has passed full SHA-256 and size verification**, and expected empty
+directories exist. A sender's `completed` reports transport completion with
+`sha256_verified: false`; consume the recipient's result for verified delivery.
+The sender does not yet receive a separate post-verification receipt.
+
+Exit status is `0` for success, `1` for failure, `124` for timeout, and `130` for
+cancellation. `--timeout` defaults to `30m`, includes invitation input and
+verification, and accepts positive durations up to `24h`. SIGINT/SIGTERM cancel
+the process. A broken stdout pipe cancels the transfer.
+
+Receive destinations must be new directories. This first agent interface does
+not expose resume or overwrite. Failed transfers can leave partial files in the
+new destination. Symlinks and special files are rejected. Invitations are
+limited to 4 MiB and 10,000 file/directory entries.
+
+## Transport
+
+Flock reuses croc's PAKE, encrypted control messages, chunk framing, file handling,
+and transport negotiation. It adds a QUIC adapter using
+[quic-go](https://github.com/quic-go/quic-go), with TLS 1.3 mutual authentication
+bound to the PAKE session. The authenticated control channel exchanges UDP
+endpoints; repeated outbound probes help establish bidirectional UDP traffic.
+The default is eight bidirectional streams on one QUIC connection; set
+`--streams 1` through `--streams 16` to experiment.
+
+TCP carries pairing/control only. File data requires QUIC and **does not silently
+fall back to TCP**. The peer must advertise Flock support. This is not a croc
+wire-compatible file-data mode, although the inherited croc CLI remains available.
+
+The advertised IPv4 address must be reachable at the actual UDP listener port.
+The default embedded control listener uses a random TCP port; both that TCP port
+and the UDP port must be reachable. To pin them for firewall rules:
+
+```sh
+./flock send --advertise 100.64.0.10 \
+  --control-listen 0.0.0.0:9009 --udp-listen 0.0.0.0:9010 ./folder
 ```
 
-### Using nix-env
+An existing croc control relay can be selected with `--relay HOST:PORT`. Flock
+also provides a control-only relay:
 
-You can install the latest release with [Nix](https://nixos.org/):
-
-```bash
-nix-env -i croc
+```sh
+./flock relay --listen 0.0.0.0:9009
+./flock send --relay relay.example:9009 --advertise 100.64.0.10 ./folder
 ```
 
-### On NixOS
+If configured, set the same `FLOCK_RELAY_PASSWORD` on the relay and both peers.
+The relay carries encrypted control messages; no file-data relay is started by
+`flock relay`. A control relay does not make an unreachable UDP endpoint reachable.
+Public NAT traversal and QUIC relaying are not implemented in this first slice.
 
-You can add this to your [configuration.nix](https://nixos.org/manual/nixos/stable/#ch-configuration):
+## Validation and performance
 
-```nix
-environment.systemPackages = [
-  pkgs.croc
-];
+```sh
+go test ./...
+go test -race ./internal/flockcli ./src/codephrase ./src/croc \
+  -run 'Flock|Agent|Invitation|ReceiveDeadline|TailcatMultiStreamEndToEnd'
 ```
 
-### On Alpine Linux
-
-Enable the community repository for your Alpine release, then install:
-
-```bash
-apk add croc
-```
-
-Check the [Alpine package index](https://pkgs.alpinelinux.org/packages?name=croc)
-for your branch's version. Stable branches can carry older releases; see the
-[distribution status](packaging/distributions/status.md) before selecting one.
-
-### On Debian and Ubuntu
-
-The [pkg.haus archive](https://pkg.haus/) provides third-party Debian packages.
-Follow its repository setup and supported-release instructions before running:
-
-```bash
-sudo apt install croc
-```
-
-For a release that includes upstream `.deb` downloads, download the file matching
-`dpkg --print-architecture` from the [release page](https://github.com/schollz/croc/releases).
-Replace `VERSION` and `ARCH` below with the downloaded filename:
-
-```bash
-sudo apt install ./croc_VERSION-1_ARCH.deb
-```
-
-This downloaded-package method also applies to older Debian and Ubuntu releases
-that do not provide croc in their configured repositories. It does not add an APT
-repository; download a newer package to upgrade it.
-
-### On Fedora and openSUSE
-
-For a release that includes upstream `.rpm` downloads, choose the file matching
-`rpm --eval '%{_arch}'` from the [release page](https://github.com/schollz/croc/releases).
-Replace `VERSION` and `ARCH` with the downloaded filename:
-
-```bash
-sudo dnf install ./croc-VERSION-1.ARCH.rpm
-# On openSUSE:
-sudo zypper install ./croc-VERSION-1.ARCH.rpm
-```
-
-These downloads install the CLI, manual, license notices, and shell completions.
-They require `ca-certificates` and start no background services. Upgrade them
-through the package manager; `croc update` leaves package-owned binaries intact.
-See [Linux packaging](packaging/README.md) for architectures and verification.
-
-### On Arch Linux
-
-Install with `pacman`:
-
-```bash
-pacman -S croc
-```
-
-### On Termux
-
-Install with `pkg`:
-
-```bash
-pkg install croc
-```
-
-### On FreeBSD
-
-Install with `pkg`:
-
-```bash
-pkg install croc
-```
-
-### On Linux, macOS, and Windows via Conda
-
-You can install from [conda-forge](https://github.com/conda-forge/croc-feedstock) globally with [`pixi`](https://pixi.sh/):
-
-```bash
-pixi global install croc
-```
-
-Or install into a particular environment with [`conda`](https://docs.conda.io/projects/conda/):
-
-```bash
-conda install --channel conda-forge croc
-```
-
-### On Linux, macOS via Docker
-
-Add the following one-liner function to your ~/.profile (works with any POSIX-compliant shell):
-
-```bash
-croc() { [ $# -eq 0 ] && set -- ""; mkdir -p "$HOME/.config/croc"; docker run --rm -it --user "$(id -u):$(id -g)" -v "$(pwd):/c" -v "$HOME/.config/croc:/.config/croc" -w /c -e CROC_SECRET docker.io/schollz/croc "$@"; }
-```
-
-You can also just paste it in the terminal for current session. On first run Docker will pull the image. `croc` via Docker will only work within the current directory and its subdirectories.
-
-### Build from Source
-
-If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.27+):
-
-```bash
-go install github.com/schollz/croc/v11@latest
-```
-
-### On Android
-
-There are F-Droid apps available:
-
-- [crocgui](https://f-droid.org/packages/com.github.howeyc.crocgui/) — original port (Go, basic UI)
-- [croc-app](https://f-droid.org/en/packages/com.dking.crocapp/) — native Kotlin/Jetpack Compose client with a modern, mobile-first interface
-- [FlCroc](https://github.com/576576/FlCroc) — cross-platform Flutter GUI (Android, Windows, Linux) that wraps the `croc` binary as its transfer core.
-
-### On Desktop
-
-Community made desktop apps:
-
-- [Croc GUI](https://github.com/interfluve-wav/croc-gui) — unofficial desktop GUI for macOS, Windows, and Linux that bundles the `croc` binary for drag-and-drop transfers, QR codes, LAN mode, and relay/proxy options.
-- [croc-desktop](https://github.com/SihanTeng/croc-desktop) — unofficial desktop GUI for Linux, macOS, and Windows (experimental iOS/Android) built with Wails v3; embeds croc in-process for send/receive, QR codes, history, logs, and optional relay hosting.
-- [Swamp Swap](https://github.com/Ferase/SwampSwap) — unofficial PyQt6 GUI desktop app for macOS, Windows, and Linux, requires installing `croc` on its own normally in order to use. Made to be compact and simple.
-
-## Usage
-
-To send a file, simply do:
-
-```bash
-$ croc send [file(s)-or-folder]
-Sending 'file-or-folder' (X MB)
-Code is: code-phrase
-```
-
-Then, to receive the file (or folder) on another computer, run:
-
-```bash
-croc code-phrase
-```
-
-The code phrase is used to establish password-authenticated key agreement ([PAKE](https://en.wikipedia.org/wiki/Password-authenticated_key_agreement)) which generates a secret key for the sender and recipient to use for end-to-end encryption.
-
-### Share a terminal with `croc ssh`
-
-On Linux, macOS, FreeBSD, or OpenBSD, start a shared terminal with:
-
-```bash
-croc ssh
-```
-
-The host receives separate six-word invitations for read/write and read-only
-participants. On Unix, a participant keeps the invitation out of the process
-list by joining with the command croc prints:
-
-```bash
-CROC_SECRET='six-word-invitation' croc ssh
-```
-
-Everyone sees one persistent terminal. Multiple read/write participants may
-type; read-only participants receive the same output but their input is
-discarded. 
-
-This does not expose an SSH daemon or require an account, public IP, inbound
-port, or SSH key setup. The invitation authenticates an ephemeral Tailcat
-WireGuard path and pins an ephemeral SSH host key. Tailcat uses DERP when it
-cannot establish a direct path; if Tailcat itself is unavailable, the client
-reauthenticates and carries the pinned SSH stream over the ordinary croc relay.
-Remote commands, forwarding, and SFTP are disabled. Anyone who receives an
-invitation has the role printed beside it until the host stops, so treat both
-invitations as secrets. 
-
-See the
-[SSH sharing design and security guide](src/docs/SSH_SHARING.md) for protocol,
-reconnection, platform, relay, and threat-model details.
-
-### Customizations & Options
-
-#### Encrypted temporary storage
-
-When an immediate peer-to-peer transfer is inconvenient, `croc` can upload
-regular files as client-side encrypted ciphertext:
-
-```bash
-croc store [file1] [file2]
-croc store --downloads 3 --expiration 3d [file1] [file2]
-croc store --url https://files.example.com [file1] [file2]
-```
-
-The original `croc send --store` syntax remains supported, with
-`--store-downloads`, `--store-expiration`, and `--store-url` settings.
-
-The command prints a browser link and a CLI token. The transfer expires after
-the selected lifetime, measured from successful upload completion, or after
-its configured number of receivers download, authenticate, and verify every
-file—whichever happens first. The lifetime defaults to one day and accepts
-whole minutes (`m`), hours (`h`), days (`d`), or weeks (`w`). The download
-limit defaults to one. Both values are subject to server policy. Run `croc`
-with no arguments and paste the token at the prompt to receive it. For
-automation, keep the token out of the process list:
-
-```bash
-CROC_STORE_TOKEN='croc-store-v1....' croc --out ./downloads
-```
-
-The browser link has the form
-`https://host/s/id#v1.decryption-key`. The decryption key is after `#` because
-URL fragments are not included in HTTP requests, so the storage service gets
-the opaque transfer ID but not the key. The full link is still a secret: anyone
-who has it can decrypt the files and claim one of the allowed downloads.
-
-While a transfer remains available, its sender can delete it with the locally
-saved revoke receipt:
-
-```bash
-croc --revoke [transfer-id]
-```
-
-Stored mode is opt-in and separate from croc's normal live relay transfers. A
-self-hosted service can be selected with `croc store --url` (or
-`croc send --store --store-url`) or `CROC_STORE_URL`.
-See [the stored-transfer design and operator guide](src/docs/STORED_TRANSFERS.md)
-for protocol, privacy, limits, and deployment details.
-
-#### Using `croc` on Linux or macOS
-
-On Linux and macOS, the sending and receiving process is slightly different to avoid [leaking the secret via the process name](https://nvd.nist.gov/vuln/detail/CVE-2023-43621). You will need to run `croc` with the secret as an environment variable. For example, to receive with the secret `***`:
-
-```bash
-CROC_SECRET=*** croc
-```
-
-For single-user systems, the default behavior can be permanently enabled by running:
-
-```bash
-croc --classic
-```
-
-#### Custom Code Phrase
-
-You can send with your own code phrase (must be at least 6 characters):
-
-```bash
-croc send --code [code-phrase] [file(s)-or-folder]
-```
-
-For default public transfers, SHA-256 of the exact code modulo the ordered
-three-relay pool determines which deployment both peers use. An automatically
-generated sender probes all three relays and generates a normal EFF code that
-maps to the first healthy one to respond. A custom code maps directly without probing
-or fallback. `--relay`, `CROC_RELAY`, `--ip`, and local-only transfers bypass
-this public routing rule. The generated sender caches the winning address in
-`best-relay` alongside croc's other configuration files, then reuses it without
-probing. A relay connection failure removes the cache so the following send
-measures the pool again; deleting the file also forces a new measurement.
-
-#### Allow Overwriting Without Prompt
-
-To automatically overwrite files without prompting, use the `--overwrite` flag:
-
-```bash
-croc --yes --overwrite <code>
-```
-
-#### Keep Both Files Without Prompt
-
-To keep an existing file and receive the incoming one under a new name (e.g. `video (1).mkv`), use the `--rename` flag:
-
-```bash
-croc --yes --rename <code>
-```
-
-#### Excluding Folders
-
-To exclude folders from being sent, use the `--exclude` flag with comma-delimited exclusions. This does a case-insensitive **substring** match against each file's relative path, so any path containing one of the given strings anywhere is excluded:
-
-```bash
-croc send --exclude "node_modules,.venv" [folder]
-```
-
-If you need to exclude one specific file rather than every path containing a substring (for example, two files share a name at different depths and only one should be excluded), use `--exclude-file` instead. It takes comma-delimited relative paths and matches them **exactly**:
-
-```bash
-croc send --exclude-file "subfolder/image.jpg" [folder]
-```
-
-#### Use Pipes - stdin and stdout
-
-You can pipe to `croc`:
-
-```bash
-cat [filename] | croc send
-```
-
-To receive the file to `stdout`, you can use:
-
-```bash
-croc --yes [code-phrase] > out
-```
-
-#### Send Text
-
-To send URLs or short text, use:
-
-```bash
-croc send --text "hello world"
-```
-
-#### Send Multiple Files
-
-You can send multiple files directly by listing the files and/or folders:
-
-```bash
-croc send [file1] [file2] [file3] [folder1] [folder2]
-```
-
-#### Show QR Code
-
-To show QR code (for mobile devices), use:
-
-```bash
-croc send --qr [file(s)-or-folder]
-```
-
-The QR code opens `https://getcroc.com/?code=...`, where the web client
-automatically connects in receive-only mode.
-
-#### Use a Proxy
-
-You can send files via a proxy by adding `--socks5`:
-
-```bash
-croc --socks5 "127.0.0.1:9050" send SOMEFILE
-```
-
-Relay hostnames are resolved by the proxy, so the client does not need a
-working DNS server to reach the relay. Bare `host:port`, `socks5://host:port`,
-and `socks5h://host:port` all use proxy-side relay DNS. Use an IP address for
-the proxy itself when local DNS is unavailable. Set `--socks5` on both peers
-(or use the `SOCKS5_PROXY` environment variable).
-
-For a network that only permits proxy traffic, use `--transport relay` on the
-sender to use the SOCKS5-capable relay transport for file data. The browser
-client uses the browser's proxy settings for its WebSocket gateway connection;
-the native CLI flag does not configure the browser.
-
-### Data transport selection
-
-The native CLI defaults to `--transport auto`. After the normal three-word-code
-PAKE handshake, two compatible native clients create PAKE-bound Tailcat node
-identities and open one or more TCP streams over an in-process Tailscale
-userspace WireGuard network. Magicsock starts through DERP and promotes the
-connection to a direct UDP path whenever NAT traversal succeeds. If the peer is
-a browser, an older client, or Tailcat setup fails, both clients use croc's
-existing relay data ports. The public spelling `--transport derp` is retained;
-in strict mode it requires Tailcat support and disables croc-relay fallback.
-Public DERP is best effort and may apply fairness limits; see Tailscale's
-[DERP reference](https://tailscale.com/docs/reference/derp-servers) and
-[performance guidance](https://tailscale.com/docs/reference/troubleshooting/poor-performance-tailnet).
-
-
-#### Change Encryption Curve
-
-To choose a different elliptic curve for encryption, use the `--curve` flag:
-
-```bash
-croc --curve p521 <codephrase>
-```
-
-#### Change Hash Algorithm
-
-For faster hashing, use the `imohash` algorithm:
-
-```bash
-croc send --hash imohash SOMEFILE
-```
-
-#### Clipboard Options
-
-By default, the code phrase is copied to your clipboard. To disable this:
-
-```bash
-croc --disable-clipboard send [filename]
-```
-
-To copy the full command with the secret as an environment variable (useful on Linux/macOS):
-
-```bash
-croc --extended-clipboard send [filename]
-```
-
-This copies the full command like `CROC_SECRET="code-phrase" croc` (including any relay/pass flags).
-
-#### Quiet Mode
-
-To suppress all output (useful for scripts and automation):
-
-```bash
-croc --quiet send [filename]
-```
-
-#### Self-host Relay
-
-You can run your own relay:
-
-```bash
-croc relay
-```
-
-By default, it uses TCP ports 9009-9013. You can customize the ports (e.g., `croc relay --ports 1111,1112`), but at least **2** ports are required.
-
-Each relay port allows 64 incomplete handshakes in total and 32 per source IP.
-Clients must send their first complete protocol message within 60 seconds and
-finish the handshake within 5 minutes. Croc sends the first message automatically;
-these deadlines do not limit how long an authenticated sender can wait for a
-receiver or how long a transfer can run. Existing room and connection timeouts
-still apply.
-
-Use `--max-pending-handshakes`, `--max-pending-handshakes-per-source`,
-`--first-message-timeout`, and `--handshake-timeout` to adjust these limits.
-Their environment variables are `CROC_MAX_PENDING_HANDSHAKES`,
-`CROC_MAX_PENDING_HANDSHAKES_PER_SOURCE`, `CROC_FIRST_MESSAGE_TIMEOUT`, and
-`CROC_HANDSHAKE_TIMEOUT`. All values must be positive; the total limit and overall
-timeout always bound the per-source allowance and first-message timeout.
-
-Users behind the same NAT or proxy share a source allowance, including browser
-users connecting through the same croc-web bridge. Raising the per-source limit
-to the total limit removes the protection against one source filling the pool.
-These concurrent handshake limits are separate from the source and room join
-rate limits. Fast-admission tokens also use the bounded handshake pool; several
-source IPs can still fill it.
-
-To send files using your relay:
-
-```bash
-croc --relay "myrelay.example.com:9009" send [filename]
-```
-
-#### Self-host Relay with Docker
-
-You can also run a relay with Docker:
-
-```bash
-docker run -d -p 9009-9013:9009-9013 -e CROC_PASS='YOURPASSWORD' docker.io/schollz/croc
-```
-
-To send files using your custom relay:
-
-```bash
-croc --pass YOURPASSWORD --relay "myreal.example.com:9009" send [filename]
-```
-
-To use custom ports, set `CROC_PORTS` (comma-separated) or `CROC_PORT` (base port):
-
-```bash
-docker run -d -p 9010-9011:9010-9011 -e CROC_PORTS='9010,9011' -e CROC_PASS='YOURPASSWORD' docker.io/schollz/croc
-```
-
-#### Web client
-
-The React/Vite client in [`web/`](web/) can send and receive multiple files and
-join `croc ssh` sessions hosted by normal CLI peers. The production client and its WebAssembly protocol
-runtime are bundled only in the standalone `croc-web` server, keeping generated
-assets and web-server code out of the cross-platform `croc` binary. Linux
-amd64 builds of `croc-web` are published separately with each release. It
-serves both the site and its same-origin WebSocket relay:
-
-```bash
-croc-web getcroc.com
-```
-
-This binds to `127.0.0.1:9014` by default for an HTTPS reverse proxy. `/`
-serves the website and `/ws` bridges to the code-selected public relay at
-`1.getcroc.com`, `2.getcroc.com`, `3.getcroc.com`, or `4.getcroc.com`. For a directly
-accessible local development server, `croc-web localhost:5173` binds and
-serves on `localhost:5173`. Use `--bind`, `--relays`, and `--ports` before the
-website address to customize the local listener or upstream croc relay.
-
-Run `make build-web` to generate the ignored production assets and build a
-local server. See [`web/README.md`](web/README.md) for frontend development,
-custom relay, and reverse-proxy instructions.
-
-## Deployment
-
-### Disco
-
-[Disco](https://disco.cloud/) is used to deploy. The root [`Dockerfile`](Dockerfile) and [`disco.json`](disco.json) deploy the
-`croc-web` web client and `croc` TCP relay as two Disco services built from the
-same image.
-Disco serves the website over HTTPS, while relay ports 9009-9017 are published
-directly as TCP ports.
-
-Set the deployment environment variables with:
-
-```bash
-disco env:set \
-  SITE_URL=yoururl.com \
-  CROC_RELAY_PORTS=9009,9010,9011,9012,9013,9014,9015,9016,9017 \
-  CROC_PASS=yourpass \
-  --project croc
-```
-
-`SITE_URL` must be the public website hostname without `https://`. Change the
-project name if it is not `croc`. The `web` service mounts the named
-`croc-store` volume at `/www/croc/storage`, which is also its configured
-`--store-dir`, so stored ciphertext and metadata survive container replacement
-and redeployment. The `web` service also reserves published TCP port 9020 and
-maps it to unused container port 65535. This deliberate port collision makes
-Disco stop the previous volume-owning web service before starting its
-replacement, avoiding concurrent access to the store. Port 9020 carries no
-application traffic and should remain blocked by the server firewall.
-
-Stored-upload policy can be set per deployment without editing `disco.json`:
-
-```bash
-disco env:set \
-  CROC_STORE_CREATE_RATE=60 \
-  CROC_STORE_ACTIVE_UPLOADS=10 \
-  CROC_STORE_UPLOAD_TIMEOUT=5m \
-  CROC_STORE_TRUSTED_PROXY=VERIFIED_PROXY_IP/32 \
-  --project croc --disco YOUR_DISCO_HOST
-```
-
-Replace the proxy placeholder with the socket source address seen by croc.
-With Docker Swarm routing, this can be the `lb-disco-main` endpoint shown by
-`docker network inspect disco-main`, rather than Caddy's container address.
-Verify the source on each instance and again after Docker network changes.
-Caddy's normal forwarding configuration supplies `X-Forwarded-For`; verify
-that different external clients remain distinct and that a forged incoming
-header cannot choose their accounting IP. Do not edit Disco-generated Caddy
-configuration or trust an entire private network to work around a mismatch.
-
-The values above are deployment overrides; croc's defaults remain five creation
-attempts per hour and two unfinished uploads per IP. `CROC_STORE_DOWNLOADS`
-controls downloads from each link and does not raise upload limits. See the
-[stored-transfer operator guide](src/docs/STORED_TRANSFERS.md) for timeout,
-cleanup, and rate-limit response behavior.
-
-The ports in `CROC_RELAY_PORTS` must match the `publishedPorts` entries in
-the `relay` service in [`disco.json`](disco.json); do not include the web
-service's deployment-only port 9020. Disco cannot generate host port mappings
-from an environment variable. Make sure the relay TCP ports are also open in
-the server's firewall or cloud security group.
-
-## Acknowledgements
-
-`croc` has evolved through many iterations, and I am thankful for the contributions! Special thanks to:
-
-- [@warner](https://github.com/warner) for the [idea](https://github.com/magic-wormhole/magic-wormhole)
-- [@tscholl2](https://github.com/tscholl2) for the [encryption gists](https://gist.github.com/tscholl2/dc7dc15dc132ea70a98e8542fefffa28)
-- [@skorokithakis](https://github.com/skorokithakis) for [proxying two connections](https://www.stavros.io/posts/proxying-two-connections-go/)
-
-And many more!
+Integration tests launch independent sender, receiver, and control relay
+processes with real TCP control and UDP data sockets. They cover one/eight
+streams, an embedded control relay, nested/empty entries, JSON-only errors,
+changed manifests, bad final checksums, expired/unsafe invitations, and blocked
+UDP without TCP data fallback. Session-authentication tests reject altered
+endpoint offers and wrong TLS session keys.
+
+The first native macOS-to-macOS LAN check transferred an incompressible 64 MiB
+file plus nested/empty entries in **2.598 seconds end to end (24.64 MiB/s)**,
+including startup and SHA-256 work. Both processes exited successfully; a separate
+remote `shasum -a 256` matched the source. This is a single functional measurement,
+not a croc comparison or a WAN performance result. Benchmarking and tuning remain
+necessary before making speed claims.
+
+## Upstream and license
+
+Flock is an MIT-licensed fork, not an upstream croc release. See [UPSTREAM.md](UPSTREAM.md)
+for the pinned base and upstream documentation. The original [LICENSE](LICENSE)
+and upstream attribution are preserved. The Go module path remains the upstream
+path in this first slice to avoid unrelated import churn; build Flock from this
+checkout using `./cmd/flock`.

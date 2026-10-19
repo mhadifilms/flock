@@ -150,6 +150,12 @@ jobs:
       - name: Run unit tests
         run: go test -v ./...
 
+      - name: Test Flock agent and native QUIC paths with race detection
+        run: go test -race ./internal/flockcli ./src/codephrase ./src/croc -run 'Flock|Agent|Invitation|ReceiveDeadline'
+
+      - name: Build Flock command
+        run: go build -o flock ./cmd/flock
+
       - name: Build pull-request smoke targets
         run: |
           go version

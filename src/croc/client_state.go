@@ -155,6 +155,9 @@ func (c *Client) setProgressBar(bar *progressbar.ProgressBar) {
 }
 
 func (c *Client) addProgress(delta int64) {
+	if c.Options.OnProgress != nil {
+		c.Options.OnProgress(delta)
+	}
 	c.barMu.RLock()
 	bar := c.bar
 	c.barMu.RUnlock()

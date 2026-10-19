@@ -192,6 +192,15 @@ func ParseSSH(secret string) (SSHComponents, error) {
 // format. Four lowercase ASCII words keep compatibility with the previous
 // four-word format; every other valid code uses croc's legacy byte-based split.
 func Parse(secret string) (Components, error) {
+	if after, ok := strings.CutPrefix(secret, "flock1:"); ok {
+		token, err := hex.DecodeString(after)
+		if err != nil || len(token) != 32 {
+			return Components{}, errors.New("invalid Flock capability")
+		}
+		room := sha256.Sum256(append([]byte("flock-room-v1/"), token...))
+		return Components{RoomName: hex.EncodeToString(room[:]), PAKEPassphrase: secret, Format: Format("flock-v1")}, nil
+	}
+
 	if len(secret) < 6 {
 		return Components{}, ErrCodeTooShort
 	}

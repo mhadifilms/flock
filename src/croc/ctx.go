@@ -60,11 +60,15 @@ func (s *stop) done() {
 
 // NewCtx creates a client with context support
 func NewCtx(ctx context.Context, ops Options) (*Client, error) {
+	return newClientCtx(ctx, ops, defaultTailcatDataTransport())
+}
+
+func newClientCtx(ctx context.Context, ops Options, transport tailcatDataTransport) (*Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	// Create a regular c
-	c, err := New(ops)
+	c, err := newClient(ops, transport)
 	if err != nil {
 		return nil, err
 	}
