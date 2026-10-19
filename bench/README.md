@@ -20,6 +20,8 @@ python3 bench/compare.py \
 
 For a quick functional check, add `--mib 64 --files 32 --rounds 1`.
 For many-file batching comparisons, run `--variants flock,croczip --fixtures small`.
+Add `--croc-quiet` to compare croc with all of its output disabled; the receipts
+record this flag. This is a useful additional baseline for agent use.
 To compare an installed Flock baseline, add `baseline` to `--variants` and set
 `--baseline-flock` and `--remote-baseline-flock`. The runner never installs or
 updates binaries. Both local and remote Python invocations bound each transfer;

@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--files', type=int, default=1024)
     parser.add_argument('--streams', type=int, default=8)
     parser.add_argument('--debug', action='store_true', help='private debug logs; do not use for timing claims')
+    parser.add_argument('--croc-quiet', action='store_true', help='disable croc output for an additional speed comparison')
     parser.add_argument('--output', type=Path, required=True, help='public metrics only, JSON Lines')
     args = parser.parse_args()
     if args.rounds < 1 or args.mib < 1 or args.files < 1 or not 1 <= args.streams <= 16:
@@ -142,7 +143,8 @@ def main():
                             dest = receive_root + '/' + run_id
                             is_croc = variant.startswith('croc')
                             common = ['--relay', args.local_ip + ':' + str(port), '--yes',
-                                      '--no-compress', '--ignore-stdin', '--disable-clipboard']
+                                      '--no-compress', '--ignore-stdin', '--disable-clipboard',
+                                      *(['--quiet'] if args.croc_quiet else [])]
                             if is_croc:
                                 run(remote_receive, ['mkdir', dest])
                                 local, remote = args.croc, args.remote_croc
@@ -217,7 +219,8 @@ def main():
                                         files=len(expected[fixture]), command_seconds=round(elapsed, 6),
                                         verified_seconds=round(time.perf_counter() - started, 6),
                                         prepare_seconds=round(prepared, 6) if prepared else None,
-                                        independent_sha256=True, transport='tcp' if is_croc else 'quic/udp')
+                                        independent_sha256=True, transport='tcp' if is_croc else 'quic/udp',
+                                        croc_quiet=args.croc_quiet if is_croc else False)
                                     with args.output.open('a') as output:
                                         output.write(json.dumps(row) + '\n')
                                     print(json.dumps(row), flush=True)
