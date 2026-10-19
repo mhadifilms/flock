@@ -5,7 +5,8 @@ automatic pairing invitations, deadlines, and verified receive results.
 
 **Early release.** Directly reachable IPv4 peers work on a LAN or an overlay
 such as Tailscale. Internet NAT discovery, UDP relay fallback, and geographic
-WAN qualification are future work. Performance comparisons are still pending.
+WAN qualification are future work. Performance depends on workload and route; see
+the [measured LAN results](bench/results/README.md).
 
 ## Install
 
@@ -163,12 +164,17 @@ changed manifests, bad final checksums, expired/unsafe invitations, and blocked
 UDP without TCP data fallback. Session-authentication tests reject altered
 endpoint offers and wrong TLS session keys.
 
-The first native macOS-to-macOS LAN check transferred an incompressible 64 MiB
-file plus nested/empty entries in **2.598 seconds end to end (24.64 MiB/s)**,
-including startup and SHA-256 work. Both processes exited successfully; a separate
-remote `shasum -a 256` matched the source. This is a single functional measurement,
-not a comparative benchmark or a WAN performance result. Benchmarking and tuning remain
-necessary before making speed claims.
+The macOS performance branch batches ready QUIC datagrams and avoids looking up
+hardware identity for every file. Repeated tests between two Macs cover both
+transfer directions, a 1 GiB incompressible file, and a 1,026-file directory.
+Every received file passes an independent SHA-256 comparison. The directory is
+substantially faster than croc's normal transfer mode and its explicit ZIP mode;
+croc remains faster on the bulk file in these LAN tests.
+
+See [results, build fingerprints, and limits](bench/results/README.md) and the
+[reproducible two-host runner](bench/README.md). These changes are source-branch
+work and are **not included in the published v0.1.0 packages**. They do not
+establish WAN performance or a universal speedup from using UDP.
 
 ## License and provenance
 

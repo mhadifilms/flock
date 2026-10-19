@@ -61,7 +61,8 @@ benchmark artifacts, not release assets.
 
 The macOS adapter groups ready UDP packets without waiting for a batching timer.
 It connects the socket only after the authenticated peer endpoint is known,
-preserves ECN markings, copies queued payloads, and uses Go's socket readiness
+preserves ECN markings, copies queued payloads, retries transient send-buffer
+backpressure, and uses Go's socket readiness
 and cancellation machinery. There is a bounded send queue and a prefetched read
 batch. QUIC encryption, congestion control, retransmission, and the wire protocol
 are unchanged; this also interoperates with Flock 0.1.0.
@@ -72,7 +73,10 @@ the adapter for diagnosis or comparison. This changes packet handling only and
 never permits TCP file-data fallback. Other platforms retain quic-go's normal
 UDP path. `purego` calls libSystem without requiring Cgo or a compiler on the
 recipient machine. Errno is captured in the same foreign call to avoid observing
-runtime changes between calls.
+runtime changes between calls. Oversized path-MTU probes retain quic-go's loss
+semantics instead of closing the connection. Tests inject partial sends, buffer
+exhaustion, interruption, and oversized probes, including cancellation during a
+buffer retry.
 
 Sources: [Apple message-batch API and ABI](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/socket_private.h),
 [quic-go packet handling](https://github.com/quic-go/quic-go/blob/v0.64.0/sys_conn_helper_darwin.go),

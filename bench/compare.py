@@ -87,6 +87,7 @@ def main():
         (small / 'café 日本語.txt').write_text('Unicode\n')
     remote_root = '/tmp/flock-benchmark-' + uuid.uuid4().hex
     run(True, ['mkdir', '-m', '700', remote_root])
+    (work / 'run.json').write_text(json.dumps(dict(vars(args), remote_root=remote_root), default=str, indent=2))
     # Stage identical immutable source bytes outside all measured intervals.
     subprocess.run(['scp', '-qr', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                     str(source), args.ssh + ':' + remote_root + '/source'], check=True)
@@ -98,7 +99,7 @@ def main():
         name = names[fixture]
         expected[fixture] = {path: value for path, value in inventory['files'].items()
                              if path == name or path.startswith(name + '/')}
-    # One persistent source-hosted relay for every tool. Croc never uses discovery
+    # One persistent controller-hosted relay for every tool. Croc never uses discovery
     # or public services, and its data transport is explicitly TCP relay.
     for port in range(22100, 23100, 10):
         sockets = []
@@ -188,7 +189,7 @@ def main():
                                             raise RuntimeError('sender exited before invitation')
                                         # Keep draining stdout while the receiver runs: pipe capacity
                                         # must never become a hidden transfer limit.
-                                        drain = threading.Thread(target=lambda: remainder.extend(sender.stdout), daemon=True)
+                                        drain = threading.Thread(target=lambda stream=sender.stdout, lines=remainder: lines.extend(stream), daemon=True)
                                         drain.start()
                                     received = subprocess.run(command(remote_receive, timeout_wrapper + receive),
                                         input=json.dumps(invitation) if invitation else None,
