@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -67,6 +68,7 @@ type darwinPacketConn struct {
 	*net.UDPConn
 	raw       syscall.RawConn
 	functions *batchFunctions
+	sendBatch func(uintptr, []darwinMessage) (int, error)
 	peer      atomic.Pointer[net.UDPAddr]
 	pairing   sync.Mutex
 	done      chan struct{}
@@ -102,6 +104,7 @@ func flockPacketConn(socket *net.UDPConn) net.PacketConn {
 		return socket
 	}
 	c := &darwinPacketConn{UDPConn: socket, raw: raw, functions: functions, done: make(chan struct{}), outgoing: make(chan *udpPacket, 64), writeDone: make(chan struct{})}
+	c.sendBatch = func(fd uintptr, messages []darwinMessage) (int, error) { return c.nativeCall(true, fd, messages) }
 	go c.writeLoop()
 
 	return c
@@ -162,12 +165,33 @@ func (c *darwinPacketConn) WriteTo(data []byte, address net.Addr) (int, error) {
 	}
 	return c.sendOne(data, nil)
 }
+
+// A saturated local UDP queue is backpressure, not a broken authenticated
+// session. Bound retries by socket cancellation instead of spinning on a
+// descriptor that the kernel still reports writable.
+func (c *darwinPacketConn) waitForSendBuffer() error {
+	timer := time.NewTimer(time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-c.done:
+		return net.ErrClosed
+	case <-timer.C:
+		return nil
+	}
+}
 func (c *darwinPacketConn) sendOne(data, oob []byte) (int, error) {
 	n := 0
 	var sendErr error
 	err := c.raw.Write(func(fd uintptr) bool {
 		for {
 			n, sendErr = unix.SendmsgN(int(fd), data, oob, nil, unix.MSG_DONTWAIT)
+			if sendErr == unix.ENOBUFS {
+				if err := c.waitForSendBuffer(); err != nil {
+					sendErr = err
+					break
+				}
+				continue
+			}
 			if sendErr != unix.EINTR {
 				break
 			}
@@ -281,6 +305,9 @@ func (c *darwinPacketConn) writeLoop() {
 			if !packets[first].batchable || fallback {
 				_, sendErr = c.sendOne(packets[first].data[:packets[first].n], packets[first].oob[:packets[first].nn])
 				first++
+				if errors.Is(sendErr, unix.EMSGSIZE) {
+					sendErr = nil
+				}
 			} else {
 				end := first + 1
 				for end < count && packets[end].batchable && packets[end].tos == packets[first].tos {
@@ -291,6 +318,7 @@ func (c *darwinPacketConn) writeLoop() {
 					messages[i] = darwinMessage{iov: &vectors[i], iovLength: 1}
 				}
 				offset := first
+				limit := end
 				rawErr := c.raw.Write(func(fd uintptr) bool {
 					if tos != packets[first].tos {
 						if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_TOS, packets[first].tos); err != nil {
@@ -300,8 +328,29 @@ func (c *darwinPacketConn) writeLoop() {
 						tos = packets[first].tos
 					}
 					for offset < end {
-						n, err := c.nativeCall(true, fd, messages[offset:end])
+						n, err := c.sendBatch(fd, messages[offset:limit])
 						offset += n
+						if err == unix.EMSGSIZE {
+							if limit-offset > 1 {
+								limit = offset + 1
+								continue
+							}
+							// Like quic-go's send queue, let loss of an oversized probe drive
+							// path-MTU discovery instead of killing the entire connection.
+							offset++
+							limit = end
+							continue
+						}
+						if offset == limit {
+							limit = end
+						}
+						if err == unix.ENOBUFS {
+							if retryErr := c.waitForSendBuffer(); retryErr != nil {
+								sendErr = retryErr
+								return true
+							}
+							continue
+						}
 						if err == unix.EINTR {
 							continue
 						}
@@ -323,8 +372,8 @@ func (c *darwinPacketConn) writeLoop() {
 					sendErr = rawErr
 				}
 				// Preserve partial progress before falling back on systems without this API
-				// or with a send buffer too small for the gathered batch.
-				if errors.Is(sendErr, unix.ENOSYS) || errors.Is(sendErr, unix.EOPNOTSUPP) || errors.Is(sendErr, unix.EMSGSIZE) || errors.Is(sendErr, unix.EINVAL) {
+				// and unsupported socket options.
+				if errors.Is(sendErr, unix.ENOSYS) || errors.Is(sendErr, unix.EOPNOTSUPP) || errors.Is(sendErr, unix.EINVAL) {
 					fallback = true
 					first = offset
 					sendErr = nil

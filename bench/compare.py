@@ -43,6 +43,7 @@ def main():
     parser.add_argument('--mib', type=int, default=1024)
     parser.add_argument('--files', type=int, default=1024)
     parser.add_argument('--streams', type=int, default=8)
+    parser.add_argument('--debug', action='store_true', help='private debug logs; do not use for timing claims')
     parser.add_argument('--output', type=Path, required=True, help='public metrics only, JSON Lines')
     args = parser.parse_args()
     if args.rounds < 1 or args.mib < 1 or args.files < 1 or not 1 <= args.streams <= 16:
@@ -58,6 +59,8 @@ def main():
     ssh = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', args.ssh]
 
     def command(remote, argv):
+        if args.debug:
+            argv = ['env', 'LOGGER=debug', *argv]
         return ssh + [shlex.join(argv)] if remote else argv
 
     def run(remote, argv, **kwargs):
@@ -195,7 +198,9 @@ def main():
                                         drain.join(timeout=5)
                                     elapsed = time.perf_counter() - started
                                     if sender.returncode or received.returncode:
-                                        raise RuntimeError(f'{variant} failed; see private logs {run_id}')
+                                        recv_log.write(received.stdout)
+                                        send_log.write(''.join(remainder))
+                                        raise RuntimeError(f'{variant} failed (sender={sender.returncode}, receiver={received.returncode}); see private logs {run_id}')
                                     if not is_croc:
                                         events = [json.loads(line) for line in remainder]
                                         recipient = [json.loads(line) for line in received.stdout.splitlines()]

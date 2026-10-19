@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -232,5 +233,96 @@ func TestFlockDarwinCloseFullQueue(t *testing.T) {
 	}
 	if len(a.outgoing) != 0 {
 		t.Fatal("queued buffers retained after close")
+	}
+}
+
+func TestFlockDarwinSendBufferBackpressure(t *testing.T) {
+	a, b := batchSocket(t), batchSocket(t)
+	if err := a.Pair(b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	a.sendBatch = func(fd uintptr, messages []darwinMessage) (int, error) {
+		switch calls.Add(1) {
+		case 1:
+			n, err := a.nativeCall(true, fd, messages[:1])
+			if err != nil {
+				return n, err
+			}
+			return n, unix.ENOBUFS
+		case 2:
+			return 0, unix.ENOBUFS
+		case 3:
+			return 0, unix.EINTR
+		default:
+			return a.nativeCall(true, fd, messages)
+		}
+	}
+	for i := range 32 {
+		if _, _, err := a.WriteMsgUDP([]byte{byte(i)}, nil, b.LocalAddr().(*net.UDPAddr)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 32 {
+		messages := batchMessage(32)
+		if _, err := b.ReadBatch(messages, 0); err != nil {
+			t.Fatal(err)
+		}
+		if messages[0].N != 1 || messages[0].Buffers[0][0] != byte(i) {
+			t.Fatalf("partial retry duplicated/lost packet %d", i)
+		}
+	}
+	if calls.Load() < 4 {
+		t.Fatal("did not exercise retries")
+	}
+}
+func TestFlockDarwinCancelSendBufferRetry(t *testing.T) {
+	a, b := batchSocket(t), batchSocket(t)
+	if err := a.Pair(b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	var once sync.Once
+	a.sendBatch = func(uintptr, []darwinMessage) (int, error) {
+		once.Do(func() { close(entered) })
+		return 0, unix.ENOBUFS
+	}
+	if _, _, err := a.WriteMsgUDP([]byte{1}, nil, b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	closed := make(chan struct{})
+	go func() { a.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("buffer retry did not cancel")
+	}
+}
+
+func TestFlockDarwinOversizedProbeDoesNotClose(t *testing.T) {
+	a, b := batchSocket(t), batchSocket(t)
+	if err := a.Pair(b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	var calls atomic.Int32
+	a.sendBatch = func(fd uintptr, messages []darwinMessage) (int, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			return 0, unix.EMSGSIZE
+		}
+		return a.nativeCall(true, fd, messages)
+	}
+	if _, _, err := a.WriteMsgUDP([]byte("probe"), nil, b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	if _, _, err := a.WriteMsgUDP([]byte("data"), nil, b.LocalAddr().(*net.UDPAddr)); err != nil {
+		t.Fatal(err)
+	}
+	messages := batchMessage(32)
+	if _, err := b.ReadBatch(messages, 0); err != nil || string(messages[0].Buffers[0][:messages[0].N]) != "data" {
+		t.Fatal("oversized probe closed or corrupted connection", err)
 	}
 }
