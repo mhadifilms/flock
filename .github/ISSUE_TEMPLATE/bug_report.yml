@@ -76,7 +76,7 @@ body:
     attributes:
       label: Relevant log output
       description: |
-        Paste relevant JSON error events and stderr diagnostics. Remove invitation capabilities. 
+        Paste relevant JSON error events and stderr diagnostics. Remove invitation capabilities.
         This will be automatically formatted into code, so no need for backticks.
       render: shell
     validations:
