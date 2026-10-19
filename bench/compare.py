@@ -41,14 +41,16 @@ def main():
     parser.add_argument('--directions', default='forward,reverse')
     parser.add_argument('--rounds', type=int, default=3)
     parser.add_argument('--mib', type=int, default=1024)
+    parser.add_argument('--work-dir', type=Path, help='existing filesystem directory for private fixtures and receives')
+    parser.add_argument('--timeout', type=int, default=120, help='per-transfer deadline in seconds (default: 120)')
     parser.add_argument('--files', type=int, default=1024)
     parser.add_argument('--streams', type=int, default=8)
     parser.add_argument('--debug', action='store_true', help='private debug logs; do not use for timing claims')
     parser.add_argument('--croc-quiet', action='store_true', help='disable croc output for an additional speed comparison')
     parser.add_argument('--output', type=Path, required=True, help='public metrics only, JSON Lines')
     args = parser.parse_args()
-    if args.rounds < 1 or args.mib < 1 or args.files < 1 or not 1 <= args.streams <= 16:
-        parser.error('positive rounds/mib/files and 1..16 streams are required')
+    if args.rounds < 1 or args.mib < 1 or args.files < 1 or not 1 <= args.streams <= 16 or not 1 <= args.timeout <= 86400:
+        parser.error('positive rounds/mib/files, 1..16 streams and a 1..86400-second timeout are required')
     variants, fixtures, directions = (value.split(',') for value in
                                      (args.variants, args.fixtures, args.directions))
     if set(variants) - {'flock', 'baseline', 'croc4', 'croc8', 'croczip'}:
@@ -68,7 +70,7 @@ def main():
         return subprocess.run(command(remote, argv), check=True, **kwargs)
 
     # Logs may contain bearer invitations. Retain failures privately; publish only metrics.
-    work = Path(tempfile.mkdtemp(prefix='flock-benchmark-'))
+    work = Path(tempfile.mkdtemp(prefix='flock-benchmark-', dir=args.work_dir))
     print(f'Private logs and fixtures: {work}', flush=True)
     source = work / 'source'
     source.mkdir()
@@ -90,8 +92,9 @@ def main():
     run(True, ['mkdir', '-m', '700', remote_root])
     (work / 'run.json').write_text(json.dumps(dict(vars(args), remote_root=remote_root), default=str, indent=2))
     # Stage identical immutable source bytes outside all measured intervals.
-    subprocess.run(['scp', '-qr', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
-                    str(source), args.ssh + ':' + remote_root + '/source'], check=True)
+    if 'reverse' in directions:
+        subprocess.run(['scp', '-qr', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+                        str(source), args.ssh + ':' + remote_root + '/source'], check=True)
     expected = {}
     names = {'startup': 'startup.bin', 'large': 'large.bin', 'small': 'small'}
     inventory = json.loads(run(False, ['python3', '-c', HASHER, str(source)], capture_output=True,
@@ -164,12 +167,13 @@ def main():
                                 send = [remote if remote_send else local, 'send', '--relay',
                                     args.local_ip + ':' + str(port), '--advertise',
                                     args.remote_ip if remote_send else args.local_ip, '--streams',
-                                    str(args.streams), '--timeout', '120s', item]
+                                    str(args.streams), '--timeout', str(args.timeout) + 's', item]
                                 receive = [remote if remote_receive else local, 'receive',
-                                           '--out', dest, '--timeout', '120s']
+                                           '--out', dest, '--timeout', str(args.timeout) + 's']
                             # Bound remote tools too; terminating SSH alone can leave a remote child.
                             timeout_wrapper = ['python3', '-c',
-                                'import subprocess,sys; sys.exit(subprocess.run(sys.argv[1:],timeout=125).returncode)']
+                                'import subprocess,sys; sys.exit(subprocess.run(sys.argv[2:],timeout=float(sys.argv[1])).returncode)',
+                                str(args.timeout + 5)]
                             with (work / (run_id + '-send.log')).open('w') as send_log, \
                                  (work / (run_id + '-receive.log')).open('w') as recv_log:
                                 started = time.perf_counter()
@@ -195,7 +199,7 @@ def main():
                                         drain.start()
                                     received = subprocess.run(command(remote_receive, timeout_wrapper + receive),
                                         input=json.dumps(invitation) if invitation else None,
-                                        stdout=subprocess.PIPE, stderr=recv_log, text=True, timeout=130)
+                                        stdout=subprocess.PIPE, stderr=recv_log, text=True, timeout=args.timeout + 10)
                                     sender.wait(timeout=15)
                                     if not is_croc:
                                         drain.join(timeout=5)

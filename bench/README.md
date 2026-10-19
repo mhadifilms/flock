@@ -25,7 +25,12 @@ record this flag. This is a useful additional baseline for agent use.
 To compare an installed Flock baseline, add `baseline` to `--variants` and set
 `--baseline-flock` and `--remote-baseline-flock`. The runner never installs or
 updates binaries. Both local and remote Python invocations bound each transfer;
-use smaller fixtures on a slow WAN rather than exceeding the 120-second deadline.
+the deadline defaults to 120 seconds and can be extended with `--timeout SECONDS`
+(up to 24 hours). For large files, use an existing scratch directory on a volume
+with enough space via `--work-dir /path/to/scratch`. For example,
+`--fixtures large --mib 20480 --rounds 1 --directions forward --timeout 1200`
+compares one 20 GiB file (21,474,836,480 bytes). A forward-only run does not stage
+a redundant source copy on the other host.
 
 Fixtures are independently generated random bytes: a 64 KiB startup file, a
 1 GiB bulk file, and 1,024 approximately 4 KiB files plus a zero-byte file, a
