@@ -48,7 +48,7 @@ jobs:
       - name: Verify Flock version
         run: go run -tags croc_no_tailcat . --version
       - name: Race-test agent and transport paths
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: go test -race ./internal/flockcli ./src/codephrase ./src/croc -run 'Flock|Agent|Invitation|ReceiveDeadline'
       - name: Test minimal release build
         run: go test -tags croc_no_tailcat ./internal/flockcli ./src/croc -run 'Flock|Agent|Invitation|ReceiveDeadline'

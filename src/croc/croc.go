@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/denisbrodbeck/machineid"
-	ignore "github.com/sabhiram/go-gitignore"
 	log "github.com/mhadifilms/flock/src/logger"
+	ignore "github.com/sabhiram/go-gitignore"
 	"github.com/schollz/pake/v3"
 	"github.com/schollz/peerdiscovery"
 	"github.com/schollz/progressbar/v3"
@@ -188,13 +188,22 @@ type SimpleMessage struct {
 	Curve   string
 }
 
-// Client holds the state of the croc transfer
+// cachedMachineID avoids launching ioreg for every file on macOS. The identity
+// is stable for the lifetime of this transfer client, including reconnects.
+func (c *Client) cachedMachineID() string {
+	c.machineIDOnce.Do(func() { c.machineID, _ = machineid.ID() })
+	return c.machineID
+}
+
+// Client holds the state of the croc transfer.
 type Client struct {
 	Options                         Options
 	Pake                            *pake.Pake
 	Key                             []byte
 	ExternalIP, ExternalIPConnected string
 	startup                         startupTiming
+	machineIDOnce                   sync.Once
+	machineID                       string
 
 	// steps involved in forming relationship
 	lifecycleMu               sync.RWMutex
@@ -1791,7 +1800,7 @@ func (c *Client) Send(filesInfo []FileInfo, emptyFoldersToTransfer []FileInfo, t
 		showReceiveCommandQrCode(webURL)
 	}
 	if c.Options.Ask {
-		machid, _ := machineid.ID()
+		machid := c.cachedMachineID()
 		fmt.Fprintf(os.Stderr, "\rYour machine ID is '%s'\n", machid)
 	}
 	// c.spinner.Suffix = " waiting for recipient..."
@@ -2522,7 +2531,7 @@ func (c *Client) processSenderInfo(senderInfo SenderInfo) (done bool, err error)
 		}
 		choicePrompt := termui.PromptChoices("(Y/n)", colorEnabled)
 		if c.Options.Ask || senderInfo.Ask {
-			machID, _ := machineid.ID()
+			machID := c.cachedMachineID()
 			fmt.Fprintf(output, "\rYour machine id is '%s'.\n%s %s (%s) from '%s'? %s ", machID, action, fname, utils.ByteCountDecimal(totalSize), senderInfo.MachineID, choicePrompt)
 		} else {
 			if c.TotalNumberFolders > 0 {
@@ -3069,7 +3078,7 @@ func (c *Client) updateIfSenderChannelSecured() (err error) {
 		if err := c.finalizeHashNegotiation(); err != nil {
 			return err
 		}
-		machID, _ := machineid.ID()
+		machID := c.cachedMachineID()
 		nextReconnectRoom := ""
 		externalIP := ""
 		if c.peerInlineMetadata {
@@ -3204,7 +3213,7 @@ func (c *Client) recipientGetFileReady(finished bool) (err error) {
 	c.TotalChunksTransferred = 0
 	c.CurrentFileIsClosed = false
 	c.receiveMutex.Unlock()
-	machID, _ := machineid.ID()
+	machID := c.cachedMachineID()
 	externalIP := ""
 	if c.peerInlineMetadata {
 		externalIP = c.advertisedExternalIP()
