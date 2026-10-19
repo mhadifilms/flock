@@ -100,6 +100,66 @@ time and **2.3× faster** in ZIP command time. With independent verification, th
 figures are **8.3×** and **2.2×**. This extra comparison covers A → B only;
 [all nine receipts](2026-10-19-quiet.jsonl) passed independent SHA-256 checks.
 
+## Pipelined verification update: current candidate
+
+The source at `1cb78ae7873c4c75b2310ed302417bf6643fc66e` overlaps full
+SHA-256 readback of completed destination regions with the remaining transfer.
+A coverage bitset rejects duplicate chunks and prevents hashing unwritten holes;
+completion waits for every byte, the full digest, size and file identity checks.
+Small files retain post-transfer verification. For one large file, the engine
+uses its negotiated sampled transfer hint rather than scanning the whole source
+again for xxhash. The invitation still contains a full source SHA-256. No chunk
+encryption, authenticated wire format or required verification is removed.
+
+Both endpoints used the identical Go 1.27.0 / Cgo-free ARM64 binary, SHA-256
+`e2045fd1b6c1436641016b122c522dabb6576ff67dd6fc5d1552cd218895e56c`.
+The later Windows test correction changes no production code. The following
+comparison uses the same two hosts, route and pinned croc 11.5.4 build as above.
+One full random 20 GiB file came from a RAM-backed APFS source; the recipient
+used its internal SSD. Generation/staging preceded timing. Three trials per
+tool alternated order; this update measures A → B only. croc used eight TCP
+relay connections, `--quiet`, and no compression.
+
+| Tool | Median command | Median including independent SHA-256 |
+| --- | ---: | ---: |
+| Flock | 86.295 s | 94.987 s |
+| croc eight connections + quiet | 82.214 s | 90.789 s |
+
+All six transfers passed independent destination SHA-256 checks. Flock still
+took **5.0% longer** in command time and **4.6% longer** including the additional
+check. Its median source preparation alone was **9.063 seconds** before the
+invitation: full source SHA-256 remains on the critical path. The new median
+uses **11.4% less time** than the earlier candidate's 97.451-second single trial;
+that earlier measurement was not a repeated controlled baseline. These results
+do not establish parity or a bulk-speed advantage over croc.
+[All six current-candidate receipts](2026-10-19-bulk-verification.jsonl).
+
+The candidate is installed separately as `~/.local/bin/flock-dev` on both
+machines, with matching binary SHA-256 readback. A further interleaved
+three-trial directory check passed all independent hashes: median **3.241 s**
+for this candidate versus **3.072 s** for the preceding candidate (binary
+`09f1e4a1a946ccd7bc9ba573a3e0fbacc97a5d82007534f738e908537bddce73`).
+Ranges were 2.723–4.159 s and 3.014–3.318 s, respectively. This noisy run does
+not establish a directory improvement from the new hashing change.
+[Six directory-check receipts](2026-10-19-bulk-directory-check.jsonl).
+
+[Four additional mixed-version checks](2026-10-19-bulk-compatibility.jsonl)
+passed with 64 KiB and 64 MiB files, using both the current sender with the
+installed v0.1.0 recipient and v0.1.0 sender with the current recipient. On this
+multi-interface pair, the older sender required
+`--udp-listen ADVERTISED_LOCAL_IPV4:0`; its default wildcard bind timed out twice
+and is not qualified by this run. The current sender binds the advertised local
+interface automatically. Failed setups are retained privately and are not
+counted as successful receipts.
+
+Read-ahead, parallel-connection and frame-coalescing experiments did not show
+repeatable throughput gains and were discarded. Qualification of the retained
+change includes corruption, missing/duplicate/out-of-order chunks, file identity
+replacement, wrong lengths, cancellation, bounded coverage memory, real UDP
+process transfers, full Go tests, focused race tests and Cgo-free tests. Windows
+blocks replacement of an open destination at the kernel level; its test accepts
+that protection instead of requiring Unix rename semantics.
+
 ## Before the changes
 
 The installed Flock v0.1.0 ARM64 binary was
