@@ -60,6 +60,25 @@ files, Unicode names, the zero-byte entry and the empty directory survived.
 Flock completes **2.4–2.6× faster** in command time and **2.3–2.5× faster** with
 independent verification. [12 ZIP comparison receipts](2026-10-19-zip.jsonl).
 
+## Quiet-mode agent baseline
+
+A further three-repetition A → B directory comparison adds croc's `--quiet`
+flag to both croc endpoints. This reduces its ordinary-file runtime materially,
+so the 12.8–16.8× figures above must not be described as wins over every croc
+configuration. Flock continues emitting its normal JSON Lines and doing full
+SHA-256 verification.
+
+| Tool / directory mode | Command | Verified |
+| --- | ---: | ---: |
+| Flock | 3.090 | 3.369 |
+| croc eight connections + quiet | 27.595 | 27.896 |
+| croc ZIP + quiet | 7.119 | 7.412 |
+
+Against this quieter baseline, Flock is **8.9× faster** in ordinary-file command
+time and **2.3× faster** in ZIP command time. With independent verification, the
+figures are **8.3×** and **2.2×**. This extra comparison covers A → B only;
+[all nine receipts](2026-10-19-quiet.jsonl) passed independent SHA-256 checks.
+
 ## Before the changes
 
 The installed Flock v0.1.0 ARM64 binary was
