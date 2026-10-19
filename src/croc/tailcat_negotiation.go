@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/redact"
+	"github.com/mhadifilms/flock/src/comm"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/redact"
 )
 
 const (
@@ -214,6 +214,9 @@ func (c *Client) pakeFeatures() []string {
 		return features
 	}
 	features = append(features, tailcatFeature)
+	if _, ok := c.dataTransport().(*flockTransport); ok {
+		features = append(features, flockQUICFeature)
+	}
 	if c.Options.IsSender && c.Options.Transport == TransportDERP {
 		features = append(features, tailcatRequiredFeature)
 	}
@@ -336,6 +339,9 @@ func (c *Client) peerRequiresTailcat() bool {
 
 func (c *Client) tailcatPathEvent(status string) {
 	log.Debugf("Tailcat transport: %s", status)
+	if c.Options.OnTransport != nil {
+		c.Options.OnTransport(status)
+	}
 }
 
 func (c *Client) tailcatError(stage string, err error, tokenValue string) error {
@@ -521,21 +527,39 @@ func (c *Client) activateTailcatSender(attempt *transferAttemptState) error {
 }
 
 func (c *Client) receiveTailcatStatus(deadline time.Time) (string, error) {
-	payload, err := c.connection(0).ReceiveWithDeadline(deadline)
-	if err != nil {
-		return "", err
+	for {
+		payload, err := c.connection(0).ReceiveWithDeadline(deadline)
+		if err != nil {
+			return "", err
+		}
+		status, err := message.Decode(c.Key, payload)
+		if err != nil {
+			return "", tailcatProtocolError{err: fmt.Errorf("invalid encrypted Tailcat status: %w", err)}
+		}
+		if status.Type == flockUDPPeer {
+			provider, ok := c.dataTransport().(*flockTransport)
+			if !ok {
+				return "", errors.New("unexpected Flock UDP endpoint")
+			}
+			address, err := literalUDPAddress(status.Message)
+			if err != nil {
+				return "", err
+			}
+			select {
+			case provider.peers <- address:
+			default:
+				return "", errors.New("duplicate Flock UDP endpoint")
+			}
+			continue
+		}
+		if status.Type == message.TypeError {
+			return "", tailcatProtocolError{err: fmt.Errorf("peer error: %s", status.Message)}
+		}
+		if status.Type != message.TypeTailcatStatus {
+			return "", tailcatProtocolError{err: fmt.Errorf("expected Tailcat status, got %s", status.Type)}
+		}
+		return status.Message, nil
 	}
-	status, err := message.Decode(c.Key, payload)
-	if err != nil {
-		return "", tailcatProtocolError{err: fmt.Errorf("invalid encrypted Tailcat status: %w", err)}
-	}
-	if status.Type == message.TypeError {
-		return "", tailcatProtocolError{err: fmt.Errorf("peer error: %s", status.Message)}
-	}
-	if status.Type != message.TypeTailcatStatus {
-		return "", tailcatProtocolError{err: fmt.Errorf("expected Tailcat status, got %s", status.Type)}
-	}
-	return status.Message, nil
 }
 
 func (c *Client) selectRelayAfterTailcatFailure(stage string, setupErr error, tokenValue string, attempt *transferAttemptState) error {

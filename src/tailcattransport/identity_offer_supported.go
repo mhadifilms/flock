@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/schollz/croc/v11/internal/tailcat"
+	"github.com/mhadifilms/flock/internal/tailcat"
 	go4mem "go4.org/mem"
 	"tailscale.com/types/key"
 )

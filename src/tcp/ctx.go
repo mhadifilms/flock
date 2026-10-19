@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/schollz/croc/v11/src/logger"
+	log "github.com/mhadifilms/flock/src/logger"
 )
 
 // stop manages graceful shutdown of the TCP server

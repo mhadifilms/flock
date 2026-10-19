@@ -8,8 +8,8 @@ import (
 	"path"
 	"time"
 
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/utils"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 // TCP_BUFFER_SIZE is the maximum packet size

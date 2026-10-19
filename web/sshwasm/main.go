@@ -12,7 +12,7 @@ import (
 	"syscall/js"
 	"time"
 
-	internalssh "github.com/schollz/croc/v11/internal/sshclient"
+	internalssh "github.com/mhadifilms/flock/internal/sshclient"
 	gossh "golang.org/x/crypto/ssh"
 )
 

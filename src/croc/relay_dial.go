@@ -9,9 +9,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/tcp"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/tcp"
 	"github.com/schollz/peerdiscovery"
 )
 

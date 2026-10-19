@@ -5,10 +5,10 @@ import (
 	"os"
 	"sync"
 
-	"github.com/schollz/croc/v11/src/comm"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/utils"
+	"github.com/mhadifilms/flock/src/comm"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 // requestedChunkQueue assigns every requested file offset to exactly one

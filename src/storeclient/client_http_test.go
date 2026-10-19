@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/schollz/croc/v11/src/comm"
+	"github.com/mhadifilms/flock/src/comm"
 	"github.com/stretchr/testify/require"
 )
 

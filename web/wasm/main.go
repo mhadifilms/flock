@@ -12,11 +12,11 @@ import (
 	"syscall/js"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/schollz/croc/v11/src/codephrase"
-	croccompress "github.com/schollz/croc/v11/src/compress"
-	"github.com/schollz/croc/v11/src/crypt"
-	"github.com/schollz/croc/v11/src/pakekey"
-	"github.com/schollz/croc/v11/src/storecrypto"
+	"github.com/mhadifilms/flock/src/codephrase"
+	croccompress "github.com/mhadifilms/flock/src/compress"
+	"github.com/mhadifilms/flock/src/crypt"
+	"github.com/mhadifilms/flock/src/pakekey"
+	"github.com/mhadifilms/flock/src/storecrypto"
 	"github.com/schollz/pake/v3"
 )
 

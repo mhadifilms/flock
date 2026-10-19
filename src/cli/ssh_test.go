@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/internal/cli"
+	"github.com/mhadifilms/flock/src/termui"
 	"github.com/stretchr/testify/require"
 )
 

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/pakekey"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/pakekey"
 )
 
 const manifestTestFrameLimit = 64 * 1024 * 1024

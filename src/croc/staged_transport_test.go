@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/tailcattransport"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/tailcattransport"
 )
 
 func stagedTestBundle(path string) *tailcatDataBundle {

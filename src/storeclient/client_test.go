@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/receivefs"
-	"github.com/schollz/croc/v11/src/store"
-	"github.com/schollz/croc/v11/src/storecrypto"
+	"github.com/mhadifilms/flock/src/receivefs"
+	"github.com/mhadifilms/flock/src/store"
+	"github.com/mhadifilms/flock/src/storecrypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

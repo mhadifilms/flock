@@ -2,7 +2,7 @@
 
 package croc
 
-import "github.com/schollz/croc/v11/src/tailcattransport"
+import "github.com/mhadifilms/flock/src/tailcattransport"
 
 // Match the established direct transport's parallelism. A single Tailcat TCP
 // stream left high-latency direct paths substantially underutilized.

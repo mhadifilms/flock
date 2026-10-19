@@ -10,14 +10,14 @@ import (
 	"path/filepath"
 	"time"
 
-	storeapi "github.com/schollz/croc/v11/src/store"
+	storeapi "github.com/mhadifilms/flock/src/store"
 	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
 
 	"github.com/rivo/uniseg"
-	"github.com/schollz/croc/v11/src/storeclient"
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/storeclient"
+	"github.com/mhadifilms/flock/src/termui"
 )
 
 func TestStoredCallbacksClearPreviousLine(t *testing.T) {

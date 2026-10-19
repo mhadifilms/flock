@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/schollz/croc/v11/src/logger"
+	log "github.com/mhadifilms/flock/src/logger"
 	"github.com/schollz/pake/v3"
 
-	"github.com/schollz/croc/v11/src/comm"
-	"github.com/schollz/croc/v11/src/crypt"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/redact"
+	"github.com/mhadifilms/flock/src/comm"
+	"github.com/mhadifilms/flock/src/crypt"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/redact"
 )
 
 type server struct {

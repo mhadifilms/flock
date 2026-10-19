@@ -9,14 +9,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/comm"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/models"
-	"github.com/schollz/croc/v11/src/sshshare"
-	"github.com/schollz/croc/v11/src/tcp"
-	"github.com/schollz/croc/v11/src/termui"
-	"github.com/schollz/croc/v11/src/utils"
+	"github.com/mhadifilms/flock/internal/cli"
+	"github.com/mhadifilms/flock/src/comm"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/models"
+	"github.com/mhadifilms/flock/src/sshshare"
+	"github.com/mhadifilms/flock/src/tcp"
+	"github.com/mhadifilms/flock/src/termui"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 func sshSession(c *cli.Context) error {

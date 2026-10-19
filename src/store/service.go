@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/schollz/croc/v11/src/diskusage"
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/storecrypto"
+	"github.com/mhadifilms/flock/src/diskusage"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/storecrypto"
 )
 
 const (

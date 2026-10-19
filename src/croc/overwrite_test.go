@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/schollz/croc/v11/src/comm"
+	"github.com/mhadifilms/flock/src/comm"
 )
 
 func overwriteTestClient(t *testing.T, file FileInfo, options Options) *Client {

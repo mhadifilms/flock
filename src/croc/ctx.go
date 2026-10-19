@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/schollz/croc/v11/src/logger"
-	"github.com/schollz/croc/v11/src/message"
-	"github.com/schollz/croc/v11/src/tcp"
-	"github.com/schollz/croc/v11/src/utils"
+	log "github.com/mhadifilms/flock/src/logger"
+	"github.com/mhadifilms/flock/src/message"
+	"github.com/mhadifilms/flock/src/tcp"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 // stop manages graceful shutdown
@@ -60,11 +60,15 @@ func (s *stop) done() {
 
 // NewCtx creates a client with context support
 func NewCtx(ctx context.Context, ops Options) (*Client, error) {
+	return newClientCtx(ctx, ops, defaultTailcatDataTransport())
+}
+
+func newClientCtx(ctx context.Context, ops Options, transport tailcatDataTransport) (*Client, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	// Create a regular c
-	c, err := New(ops)
+	c, err := newClient(ops, transport)
 	if err != nil {
 		return nil, err
 	}

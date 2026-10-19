@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	internalcli "github.com/schollz/croc/v11/internal/cli"
+	internalcli "github.com/mhadifilms/flock/internal/cli"
 )
 
 func TestParseReleaseVersion(t *testing.T) {

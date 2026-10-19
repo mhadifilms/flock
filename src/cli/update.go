@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	internalcli "github.com/schollz/croc/v11/internal/cli"
-	"github.com/schollz/croc/v11/src/utils"
+	internalcli "github.com/mhadifilms/flock/internal/cli"
+	"github.com/mhadifilms/flock/src/utils"
 )
 
 const (
@@ -275,7 +275,7 @@ func updateGuidance(target string) string {
 	case normalized == "/usr/bin/croc" || normalized == "/bin/croc":
 		return "Upgrade croc with the system package manager that installed it (for example apt, dnf, zypper, pacman, or apk)."
 	case strings.HasSuffix(normalized, "/go/bin/croc"):
-		return "Upgrade the Go installation: go install github.com/schollz/croc/v11@latest"
+		return "Upgrade the Go installation: go install github.com/mhadifilms/flock@latest"
 	case runtime.GOOS == "windows":
 		return "Download the latest release from https://github.com/schollz/croc/releases/latest"
 	default:

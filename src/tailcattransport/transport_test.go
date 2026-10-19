@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/internal/tailcat"
+	"github.com/mhadifilms/flock/internal/tailcat"
 	"tailscale.com/tailcfg"
 )
 

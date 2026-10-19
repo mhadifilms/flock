@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/schollz/croc/v11/src/termui"
+	"github.com/mhadifilms/flock/src/termui"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -41,7 +41,7 @@ func clearReceiveStatus(output io.Writer, width int) {
 }
 
 func (c *Client) setReceiveStatus(status string) {
-	output, _ := termui.Output(os.Stderr)
+	output, _ := c.displayOutput()
 	c.receiveStatusWidth = writeReceiveStatus(output, c.receiveStatusWidth, status)
 }
 
@@ -49,19 +49,19 @@ func (c *Client) clearReceiveStatus() {
 	if c.receiveStatusWidth == 0 {
 		return
 	}
-	output, _ := termui.Output(os.Stderr)
+	output, _ := c.displayOutput()
 	clearReceiveStatus(output, c.receiveStatusWidth)
 	c.receiveStatusWidth = 0
 }
 
 func (c *Client) newProgressBar(max int64, description string, throttle time.Duration) *progressbar.ProgressBar {
-	output, colorEnabled := termui.Output(os.Stderr)
+	output, colorEnabled := c.displayOutput()
 	return termui.NewProgress(termui.ProgressConfig{
 		Max:          max,
 		Description:  termui.ProgressDescription("", description, colorEnabled),
 		Writer:       output,
 		ColorEnabled: colorEnabled,
-		Hidden:       c.Options.SendingText,
+		Hidden:       c.Options.SendingText || c.Options.Agent,
 		Throttle:     throttle,
 		OnCompletion: func() {
 			c.fmtPrintUpdate()
@@ -162,4 +162,11 @@ func formatNoTransferSummary(files []FileInfo, unchanged int, colorEnabled bool)
 		return "\rAlready up to date: " + detail + "\n"
 	}
 	return "\rNo files transferred.\n"
+}
+
+func (c *Client) displayOutput() (io.Writer, bool) {
+	if c.Options.Agent {
+		return io.Discard, false
+	}
+	return termui.Output(os.Stderr)
 }

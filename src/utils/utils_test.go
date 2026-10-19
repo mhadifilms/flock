@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/schollz/croc/v11/src/codephrase"
-	"github.com/schollz/croc/v11/src/receivefs"
+	"github.com/mhadifilms/flock/src/codephrase"
+	"github.com/mhadifilms/flock/src/receivefs"
 	"github.com/stretchr/testify/assert"
 )
 
