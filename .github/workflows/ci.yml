@@ -31,6 +31,7 @@ jobs:
         with:
           go-version: '1.27.0'
       - name: Check Go fixes
+        if: runner.os != 'Windows'
         run: |
           go fix ./...
           git diff --exit-code
@@ -39,13 +40,13 @@ jobs:
         run: go test ./...
       - name: Test portable Flock runtime
         if: runner.os == 'Windows'
-        # The retained legacy interactive CLI has Unix-only tests. Flock does
-        # not ship that command; exercise its own interface and runtime here.
-        run: go test ./internal/flockcli ./src/croc ./src/codephrase ./src/receivefs ./src/comm ./src/tcp ./src/utils ./src/message ./src/pakekey ./src/redact ./src/crypt ./src/compress
+        # Test the shipped minimal build and portable primitives. The retained
+        # legacy text/ZIP/UI modes are covered by the full Unix suites.
+        run: go test -tags croc_no_tailcat ./internal/flockcli ./src/codephrase ./src/receivefs ./src/comm ./src/tcp ./src/message ./src/pakekey ./src/redact ./src/crypt ./src/compress
       - name: Build installed command
-        run: go build ./
+        run: go build -tags croc_no_tailcat ./
       - name: Verify Flock version
-        run: go run . --version
+        run: go run -tags croc_no_tailcat . --version
       - name: Race-test agent and transport paths
         if: runner.os == 'Linux'
         run: go test -race ./internal/flockcli ./src/codephrase ./src/croc -run 'Flock|Agent|Invitation|ReceiveDeadline'
