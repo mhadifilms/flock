@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -119,6 +122,11 @@ func TestReceiveVerifierRejectsMissingDuplicateAndCorruptData(t *testing.T) {
 			}
 			if mode == "replaced" {
 				if err := os.Rename(v.want.Path, v.want.Path+"-original"); err != nil {
+					// Windows prevents replacing an open destination. That also
+					// satisfies this test's protection against identity replacement.
+					if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(32)) {
+						return
+					}
 					t.Fatal(err)
 				}
 				if err := os.WriteFile(v.want.Path, data, 0600); err != nil {
