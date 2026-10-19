@@ -95,6 +95,8 @@ func Debug(debug bool) {
 // Options specifies user specific options
 type Options struct {
 	Agent             bool                               `json:"-"`
+	OnChunkWritten    func(FileInfo, int64, int) error   `json:"-"`
+	OnFileReceived    func(FileInfo) error               `json:"-"`
 	OnProgress        func(int64)                        `json:"-"`
 	OnTransport       func(string)                       `json:"-"`
 	OnOffer           func([]FileInfo, []FileInfo) error `json:"-"`
@@ -3692,6 +3694,13 @@ func (c *Client) receiveData(i int, dataConn *comm.Comm, attempt *transferAttemp
 			return
 		}
 
+		if c.Options.OnChunkWritten != nil {
+			if err := c.Options.OnChunkWritten(c.FilesToTransfer[c.FilesToTransferCurrentNum], positionInt64, len(data)-8); err != nil {
+				attempt.report(err)
+				return
+			}
+		}
+
 		c.receiveMutex.Lock()
 		if c.CurrentFileIsClosed || c.CurrentFile != receiveFile {
 			c.receiveMutex.Unlock()
@@ -3713,6 +3722,12 @@ func (c *Client) receiveData(i int, dataConn *comm.Comm, attempt *transferAttemp
 				log.Debugf("error closing %s: %v", receiveFile.Name(), err)
 			} else {
 				log.Debugf("Successful closing %s", receiveFile.Name())
+			}
+			if c.Options.OnFileReceived != nil {
+				if err := c.Options.OnFileReceived(c.FilesToTransfer[c.FilesToTransferCurrentNum]); err != nil {
+					attempt.report(err)
+					return
+				}
 			}
 			if c.Options.Stdout || c.Options.SendingText {
 				pathToFile := path.Join(

@@ -42,7 +42,8 @@ forced to its TCP relay data path with compression disabled and four/eight
 connections. `croczip` adds croc's explicit ZIP batching mode.
 
 `command_seconds` covers process startup, invitation handoff over SSH, transfer,
-and native completion. Flock includes full sender and final receiver SHA-256;
+and native completion. Flock includes full sender and receiver SHA-256; large destination readback
+can overlap transfer once complete regions are available.
 croc retains its normal xxhash behavior. `verified_seconds` additionally includes
 an independent SHA-256 pass over the received files for **both** tools. Every
 file must match the source path, size and hash, and the empty directory must

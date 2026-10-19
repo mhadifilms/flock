@@ -275,8 +275,24 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 		}
 		defer os.Chdir(previous)
 	}
-	options := croc.Options{IsSender: command == "send", SharedSecret: invite.Capability, RelayAddress: invite.Relay, RelayPassword: password, NoPrompt: true, DisableLocal: true, DisableClipboard: true, IgnoreStdin: true, NoCompress: true, Curve: "p256", HashAlgorithm: "xxhash", Agent: true, OnProgress: e.progress, OnTransport: func(status string) { e.emit("transport", map[string]any{"transport": "quic/udp", "status": status}) },
+	// The invitation already commits to a full source SHA-256, and receive
+	// requires a new directory. For a single large file the engine's negotiated
+	// sampling hash avoids another full source scan. It is only a resume hint;
+	// full destination SHA-256 remains mandatory. Keep eager preparation for
+	// directories so small-file progress messages do not add per-file latency.
+	hashAlgorithm := "xxhash"
+	if len(invite.Files) == 1 && invite.Files[0].Size >= 8<<20 {
+		hashAlgorithm = "imohash"
+	}
+	options := croc.Options{IsSender: command == "send", SharedSecret: invite.Capability, RelayAddress: invite.Relay, RelayPassword: password, NoPrompt: true, DisableLocal: true, DisableClipboard: true, IgnoreStdin: true, NoCompress: true, Curve: "p256", HashAlgorithm: hashAlgorithm, Agent: true, OnProgress: e.progress, OnTransport: func(status string) { e.emit("transport", map[string]any{"transport": "quic/udp", "status": status}) },
 		OnOffer: func(offered, empty []croc.FileInfo) error { return matchOffer(invite, offered, empty) }}
+	var verifier *receiveVerifier
+	if command == "receive" {
+		verifier = newReceiveVerifier(ctx, invite.Files)
+		defer verifier.close()
+		options.OnChunkWritten = verifier.written
+		options.OnFileReceived = verifier.finishFile
+	}
 	client, err := croc.NewQUICCtx(ctx, options, croc.QUICConfig{Listen: *udpListen, Advertise: *advertise, Streams: *streams})
 	if err != nil {
 		return redact.Error(err, invite.Capability)
@@ -290,6 +306,9 @@ func run(ctx context.Context, args []string, input io.Reader, e *emitter) error 
 		err = client.Receive()
 		if err == nil {
 			for _, file := range invite.Files {
+				if verifier.verified(file.Path) {
+					continue
+				}
 				digest, size, hashErr := hashFile(ctx, filepath.FromSlash(file.Path))
 				if hashErr != nil {
 					return redact.Error(hashErr, invite.Capability)

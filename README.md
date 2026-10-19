@@ -102,7 +102,10 @@ The recipient emits `completed` with `sha256_verified: true` **only after every
 received file has passed full SHA-256 and size verification**, and expected empty
 directories exist. A sender's `completed` reports transport completion with
 `sha256_verified: false`; consume the recipient's result for verified delivery.
-The sender does not yet receive a separate post-verification receipt.
+The sender does not yet receive a separate post-verification receipt. Large files
+can be read back and hashed in completed regions while later regions arrive;
+coverage, size, file identity and the full SHA-256 must all match before success.
+Small files retain post-transfer verification.
 
 Exit status is `0` for success, `1` for failure, `124` for timeout, and `130` for
 cancellation. `--timeout` defaults to `30m`, includes invitation input and

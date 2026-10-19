@@ -129,7 +129,7 @@ func TestAgentQUICTransfer(t *testing.T) {
 			source := filepath.Join(root, "payload")
 			os.MkdirAll(filepath.Join(source, "nested", "empty"), 0700)
 			// More than one chunk per stream, non-aligned, not compressible by repeated text.
-			data := make([]byte, (2<<20)+37)
+			data := make([]byte, (9<<20)+37)
 			for i := range data {
 				data[i] = byte((i*73 + i/997) % 251)
 			}
@@ -292,7 +292,11 @@ func TestAgentRejectsChangedManifestAndChecksum(t *testing.T) {
 			defer cancel()
 			root := t.TempDir()
 			source := filepath.Join(root, "data.bin")
-			os.WriteFile(source, []byte("the sender's original bytes"), 0600)
+			data := []byte("the sender's original bytes")
+			if change == "checksum" {
+				data = bytes.Repeat(data, (9<<20)/len(data)+1)
+			}
+			os.WriteFile(source, data, 0600)
 			sender := startProcess(t, ctx, nil, "send", "--advertise", "127.0.0.1", source)
 			event := nextEvent(t, ctx, sender, "invitation")
 			var invite Invitation
